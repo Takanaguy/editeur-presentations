@@ -9,9 +9,10 @@ interface ThumbnailPanelProps {
 
 export function ThumbnailPanel({ slides, selectedSlideId, onSelect }: ThumbnailPanelProps) {
   return (
+    // La largeur, la bordure et le fond viennent du conteneur (EditorLayout) qui porte aussi la barre d'actions.
     <nav
       aria-label="Vignettes des diapositives"
-      className="flex min-h-0 w-48 shrink-0 flex-col gap-3 overflow-y-auto overflow-x-hidden border-r border-slate-200 bg-white p-2"
+      className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden p-2"
     >
       {slides.map((slide, index) => (
         <ThumbnailItem

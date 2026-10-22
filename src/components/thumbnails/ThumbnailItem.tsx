@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { SLIDE_WIDTH, type Slide } from '../../model/types'
 import { SlideView } from '../canvas/SlideView'
 
@@ -12,8 +13,17 @@ interface ThumbnailItemProps {
 }
 
 export function ThumbnailItem({ slide, number, selected, onSelect }: ThumbnailItemProps) {
+  const ref = useRef<HTMLButtonElement>(null)
+
+  // Garde la vignette sélectionnée visible (après ajout, duplication ou déplacement,
+  // elle peut être hors champ). scrollIntoView n'existe pas dans jsdom : l'appel est protégé.
+  useEffect(() => {
+    if (selected) ref.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [selected, number])
+
   return (
     <button
+      ref={ref}
       type="button"
       aria-label={`Diapositive ${number}`}
       aria-current={selected ? 'true' : undefined}
