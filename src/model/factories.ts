@@ -21,6 +21,17 @@ export function createSlide(): Slide {
   return { id: createId(), elements: [] }
 }
 
+// Copie profonde avec de nouveaux ids : la diapositive ET chaque élément, sinon
+// deux éléments de la présentation partageraient le même id.
+// Les éléments sont des objets plats (pas d'objet imbriqué) : une copie superficielle suffit.
+export function duplicateSlide(slide: Slide): Slide {
+  return {
+    ...slide,
+    id: createId(),
+    elements: slide.elements.map((element) => ({ ...element, id: createId() })),
+  }
+}
+
 export function createPresentation(title = 'Sans titre'): Presentation {
   return { version: 1, title, slides: [createSlide()] }
 }

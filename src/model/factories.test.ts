@@ -4,8 +4,9 @@ import {
   createRectElement,
   createSlide,
   createTextElement,
+  duplicateSlide,
 } from './factories'
-import { SLIDE_HEIGHT, SLIDE_WIDTH, type BaseElement } from './types'
+import { SLIDE_HEIGHT, SLIDE_WIDTH, type BaseElement, type SlideElement } from './types'
 
 function expectCenteredInSlide(el: BaseElement) {
   expect(el.x).toBeGreaterThanOrEqual(0)
@@ -25,6 +26,48 @@ describe('createSlide', () => {
 
   it('génère un id différent à chaque appel', () => {
     expect(createSlide().id).not.toBe(createSlide().id)
+  })
+})
+
+describe('duplicateSlide', () => {
+  function slideWithElements() {
+    const slide = createSlide()
+    slide.elements.push(createTextElement({ text: 'Titre' }), createRectElement(), createImageElement('a.png'))
+    return slide
+  }
+
+  it('donne un nouvel id à la diapositive', () => {
+    const slide = slideWithElements()
+    expect(duplicateSlide(slide).id).not.toBe(slide.id)
+  })
+
+  it('donne un nouvel id à chaque élément, tous distincts entre eux', () => {
+    const slide = slideWithElements()
+    const copy = duplicateSlide(slide)
+    const ids = [...slide.elements, ...copy.elements].map((e) => e.id)
+    expect(copy.elements).toHaveLength(3)
+    expect(new Set(ids).size).toBe(6)
+  })
+
+  it('garde le même contenu hors ids, dans le même ordre', () => {
+    const slide = slideWithElements()
+    const copy = duplicateSlide(slide)
+    const withoutId = (e: SlideElement) => ({ ...e, id: undefined })
+    expect(copy.elements.map(withoutId)).toEqual(slide.elements.map(withoutId))
+  })
+
+  it('ne modifie pas la diapositive d\'origine et ne partage aucun élément avec elle', () => {
+    const slide = slideWithElements()
+    const before = structuredClone(slide)
+    const copy = duplicateSlide(slide)
+    expect(slide).toEqual(before)
+    copy.elements.forEach((e, i) => expect(e).not.toBe(slide.elements[i]))
+    expect(copy.elements).not.toBe(slide.elements)
+  })
+
+  it('copie une diapositive vide', () => {
+    const copy = duplicateSlide(createSlide())
+    expect(copy.elements).toEqual([])
   })
 })
 
