@@ -3,7 +3,7 @@ import type { Slide } from '../model/types'
 import type { EditorState } from './types'
 
 // Règle commune (aussi pour elementOps) : une action sans effet retourne le MÊME
-// objet state, pour que l'historique undo/redo (plus tard) n'enregistre rien
+// objet state, pour que l'historique undo/redo (history.ts) n'enregistre rien
 // quand rien n'a changé.
 
 // Retourne une copie du tableau avec `item` inséré à `index` (l'original n'est pas touché).

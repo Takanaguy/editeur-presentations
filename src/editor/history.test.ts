@@ -1,0 +1,398 @@
+import {
+  createRectElement,
+  createSlide,
+  createTextElement,
+} from '../model/factories'
+import type { Presentation, RectElement, Slide } from '../model/types'
+import {
+  HISTORY_LIMIT,
+  canRedo,
+  canUndo,
+  createHistoryState,
+  historyReducer,
+  reconcileSelection,
+  type AppAction,
+  type HistoryState,
+} from './history'
+import { deepFreeze, makeElementState } from './testHelpers'
+import type { EditorState } from './types'
+
+// Enchaîne les actions les unes après les autres.
+function run(state: HistoryState, ...actions: AppAction[]): HistoryState {
+  return actions.reduce(historyReducer, state)
+}
+
+// Applique N fois une fabrique d'action (appelée avec l'index 1..count).
+function runMany(state: HistoryState, count: number, make: (i: number) => AppAction): HistoryState {
+  let current = state
+  for (let i = 1; i <= count; i++) current = historyReducer(current, make(i))
+  return current
+}
+
+const UNDO: AppAction = { type: 'history/undo' }
+const REDO: AppAction = { type: 'history/redo' }
+
+// Historique à partir de l'état de testHelpers (deux diapositives, la première
+// sélectionnée avec texte, rectangle et image).
+function makeHistory() {
+  const parts = makeElementState()
+  return { ...parts, history: createHistoryState(parts.state.presentation) }
+}
+
+// Historique avec `count` diapositives vides et la diapositive d'index `selected` sélectionnée.
+function makeSlidesHistory(count: number, selected = 0) {
+  const slides: Slide[] = Array.from({ length: count }, () => createSlide())
+  const presentation: Presentation = { version: 1, title: 'Test', slides }
+  const history = createHistoryState(presentation)
+  history.editor.selectedSlideId = slides[selected]!.id
+  return { slides, history }
+}
+
+describe('état initial', () => {
+  it('démarre avec un passé et un futur vides', () => {
+    const history = createHistoryState()
+    expect(history.past).toEqual([])
+    expect(history.future).toEqual([])
+    expect(canUndo(history)).toBe(false)
+    expect(canRedo(history)).toBe(false)
+    expect(history.editor.presentation.slides).toHaveLength(1)
+  })
+
+  it('part de la présentation donnée', () => {
+    const { state, history } = makeHistory()
+    expect(history.editor.presentation).toBe(state.presentation)
+  })
+})
+
+describe('actions d\'édition', () => {
+  it('crée une entrée de passé avec la présentation d\'avant', () => {
+    const { history, text } = makeHistory()
+    const before = history.editor.presentation
+    const next = run(history, { type: 'element/move', elementId: text.id, x: 5, y: 6 })
+    expect(next.past).toHaveLength(1)
+    expect(next.past[0]).toBe(before)
+    expect(next.editor.presentation).not.toBe(before)
+    expect(canUndo(next)).toBe(true)
+    expect(canRedo(next)).toBe(false)
+  })
+
+  it('vide le futur quand une nouvelle action suit un undo', () => {
+    const { history, text } = makeHistory()
+    const undone = run(
+      history,
+      { type: 'element/move', elementId: text.id, x: 5, y: 6 },
+      UNDO,
+    )
+    expect(canRedo(undone)).toBe(true)
+
+    const edited = run(undone, { type: 'element/move', elementId: text.id, x: 9, y: 9 })
+    expect(edited.future).toEqual([])
+    expect(canRedo(edited)).toBe(false)
+    expect(edited.past).toHaveLength(1)
+  })
+
+  it('compte aussi les actions de diapositives', () => {
+    const { history, first } = makeHistory()
+    const next = run(history, { type: 'slide/add' }, { type: 'slide/duplicate', slideId: first.id })
+    expect(next.past).toHaveLength(2)
+  })
+})
+
+describe('undo et redo', () => {
+  it('rendent exactement les mêmes présentations (mêmes références, sans copie)', () => {
+    const { history, text } = makeHistory()
+    const p0 = history.editor.presentation
+    const h1 = run(history, { type: 'element/move', elementId: text.id, x: 5, y: 6 })
+    const p1 = h1.editor.presentation
+    const h2 = run(h1, { type: 'element/move', elementId: text.id, x: 7, y: 8 })
+    const p2 = h2.editor.presentation
+
+    const u1 = run(h2, UNDO)
+    expect(u1.editor.presentation).toBe(p1)
+    const u2 = run(u1, UNDO)
+    expect(u2.editor.presentation).toBe(p0)
+    expect(canUndo(u2)).toBe(false)
+
+    const r1 = run(u2, REDO)
+    expect(r1.editor.presentation).toBe(p1)
+    const r2 = run(r1, REDO)
+    expect(r2.editor.presentation).toBe(p2)
+    expect(canRedo(r2)).toBe(false)
+    expect(r2.past).toEqual(h2.past)
+  })
+
+  it('undo met la présentation courante en tête du futur', () => {
+    const { history, text } = makeHistory()
+    const h1 = run(history, { type: 'element/move', elementId: text.id, x: 5, y: 6 })
+    const h2 = run(h1, { type: 'element/move', elementId: text.id, x: 7, y: 8 })
+    const undone = run(h2, UNDO, UNDO)
+    expect(undone.future[0]).toBe(h1.editor.presentation)
+    expect(undone.future[1]).toBe(h2.editor.presentation)
+  })
+
+  it('retournent le même état quand il n\'y a rien à annuler ou à refaire', () => {
+    const { history, text } = makeHistory()
+    expect(historyReducer(history, UNDO)).toBe(history)
+    expect(historyReducer(history, REDO)).toBe(history)
+
+    const edited = run(history, { type: 'element/move', elementId: text.id, x: 5, y: 6 })
+    expect(historyReducer(edited, REDO)).toBe(edited)
+  })
+})
+
+describe('actions sans entrée d\'historique', () => {
+  it('la sélection seule ne crée aucune entrée', () => {
+    const { history, rect, second } = makeHistory()
+    const afterSlide = run(history, { type: 'slide/select', slideId: second.id })
+    expect(afterSlide.editor.selectedSlideId).toBe(second.id)
+    expect(afterSlide.past).toEqual([])
+    expect(afterSlide.editor.presentation).toBe(history.editor.presentation)
+
+    const afterElement = run(history, { type: 'element/select', elementId: rect.id })
+    expect(afterElement.editor.selectedElementId).toBe(rect.id)
+    expect(afterElement.past).toEqual([])
+    expect(canUndo(afterElement)).toBe(false)
+  })
+
+  it('la sélection seule ne vide pas le futur', () => {
+    const { history, text, rect } = makeHistory()
+    const undone = run(history, { type: 'element/move', elementId: text.id, x: 5, y: 6 }, UNDO)
+    const selected = run(undone, { type: 'element/select', elementId: rect.id })
+    expect(selected.future).toBe(undone.future)
+    expect(canRedo(selected)).toBe(true)
+  })
+
+  it('une action sans effet retourne la même référence', () => {
+    const { history } = makeHistory()
+    expect(run(history, { type: 'slide/delete', slideId: 'inconnu' })).toBe(history)
+    expect(run(history, { type: 'element/delete', elementId: 'inconnu' })).toBe(history)
+    expect(run(history, { type: 'element/move', elementId: 'inconnu', x: 1, y: 1 })).toBe(history)
+    expect(run(history, { type: 'element/select', elementId: null })).toBe(history)
+  })
+
+  it('la suppression de la dernière diapositive est refusée sans entrée', () => {
+    const single = createHistoryState()
+    const onlyId = single.editor.selectedSlideId
+    const next = run(single, { type: 'slide/delete', slideId: onlyId })
+    expect(next).toBe(single)
+    expect(next.past).toEqual([])
+  })
+
+  it('un déplacement à la même place ne crée aucune entrée', () => {
+    const { history, text } = makeHistory()
+    expect(run(history, { type: 'element/move', elementId: text.id, x: text.x, y: text.y })).toBe(
+      history,
+    )
+  })
+})
+
+describe('limite de l\'historique', () => {
+  // Un rectangle déplacé à x = 1, 2, 3... : chaque action produit une présentation distincte.
+  function setup() {
+    const rect: RectElement = createRectElement({ x: 0, y: 0, width: 100, height: 100 })
+    const slide: Slide = { ...createSlide(), elements: [rect] }
+    const presentation: Presentation = { version: 1, title: 'Test', slides: [slide] }
+    const initial = createHistoryState(presentation)
+    const moveTo = (i: number): AppAction => ({
+      type: 'element/move',
+      elementId: rect.id,
+      x: i,
+      y: 0,
+    })
+    return { initial, moveTo }
+  }
+
+  it('garde au plus HISTORY_LIMIT entrées', () => {
+    const { initial, moveTo } = setup()
+    const full = runMany(initial, HISTORY_LIMIT + 10, moveTo)
+    expect(HISTORY_LIMIT).toBe(50)
+    expect(full.past).toHaveLength(HISTORY_LIMIT)
+  })
+
+  it('permet d\'annuler exactement HISTORY_LIMIT fois et oublie les plus anciennes', () => {
+    const { initial, moveTo } = setup()
+    // presentations[k] = présentation après les k premières actions (0 = initiale).
+    const presentations: Presentation[] = [initial.editor.presentation]
+    let current = initial
+    for (let i = 1; i <= 60; i++) {
+      current = historyReducer(current, moveTo(i))
+      presentations.push(current.editor.presentation)
+    }
+
+    let undone = current
+    for (let i = 0; i < HISTORY_LIMIT; i++) {
+      expect(canUndo(undone)).toBe(true)
+      undone = historyReducer(undone, UNDO)
+    }
+    expect(canUndo(undone)).toBe(false)
+    expect(historyReducer(undone, UNDO)).toBe(undone)
+    // Les 10 premières actions sont perdues : on s'arrête sur l'état d'après la 10e.
+    expect(undone.editor.presentation).toBe(presentations[10])
+    expect(undone.editor.presentation).not.toBe(presentations[0])
+  })
+
+  it('un redo après plusieurs undo ne fait jamais dépasser la limite', () => {
+    const { initial, moveTo } = setup()
+    const full = runMany(initial, 60, moveTo)
+    let state = full
+    for (let i = 0; i < 20; i++) state = historyReducer(state, UNDO)
+    expect(state.past).toHaveLength(HISTORY_LIMIT - 20)
+    expect(state.future).toHaveLength(20)
+
+    for (let i = 0; i < 20; i++) {
+      state = historyReducer(state, REDO)
+      expect(state.past.length).toBeLessThanOrEqual(HISTORY_LIMIT)
+    }
+    expect(state.past).toHaveLength(HISTORY_LIMIT)
+    expect(state.editor.presentation).toBe(full.editor.presentation)
+    expect(canRedo(state)).toBe(false)
+  })
+})
+
+describe('reconcileSelection', () => {
+  it('garde la sélection quand tout existe encore', () => {
+    const { state, text } = makeElementState()
+    const selected: EditorState = { ...state, selectedElementId: text.id }
+    const result = reconcileSelection(selected, state.presentation)
+    expect(result.selectedSlideId).toBe(state.selectedSlideId)
+    expect(result.selectedElementId).toBe(text.id)
+    expect(result.presentation).toBe(state.presentation)
+  })
+
+  it('met l\'élément à null s\'il n\'existe plus sur la diapositive', () => {
+    const { state, text, first } = makeElementState()
+    const selected: EditorState = { ...state, selectedElementId: text.id }
+    const without: Presentation = {
+      ...state.presentation,
+      slides: state.presentation.slides.map((s) =>
+        s.id === first.id ? { ...s, elements: s.elements.filter((e) => e.id !== text.id) } : s,
+      ),
+    }
+    const result = reconcileSelection(selected, without)
+    expect(result.selectedSlideId).toBe(first.id)
+    expect(result.selectedElementId).toBeNull()
+  })
+
+  it('prend la diapositive au même index quand la sélectionnée a disparu', () => {
+    const { slides, history } = makeSlidesHistory(3, 1)
+    const [a, , c] = slides
+    const without: Presentation = { ...history.editor.presentation, slides: [a!, c!] }
+    const previous: EditorState = { ...history.editor, selectedElementId: 'x' }
+    const result = reconcileSelection(previous, without)
+    expect(result.selectedSlideId).toBe(c!.id)
+    expect(result.selectedElementId).toBeNull()
+  })
+
+  it('borne l\'index au dernier disponible', () => {
+    const { slides, history } = makeSlidesHistory(3, 2)
+    const [a, b] = slides
+    const without: Presentation = { ...history.editor.presentation, slides: [a!, b!] }
+    expect(reconcileSelection(history.editor, without).selectedSlideId).toBe(b!.id)
+  })
+
+  it('tombe sur la première diapositive si l\'ancienne sélection était introuvable', () => {
+    const { slides, history } = makeSlidesHistory(2)
+    const broken: EditorState = { ...history.editor, selectedSlideId: 'fantome' }
+    expect(reconcileSelection(broken, history.editor.presentation).selectedSlideId).toBe(
+      slides[0]!.id,
+    )
+  })
+})
+
+describe('sélection après undo et redo', () => {
+  it('annuler un ajout de diapositive sélectionnée retombe sur l\'index voisin', () => {
+    // Ajout après la dernière : la nouvelle est à l'index 3, qui n'existe plus après l'undo.
+    const last = makeSlidesHistory(3, 2)
+    const addedLast = run(last.history, { type: 'slide/add' })
+    expect(addedLast.editor.selectedSlideId).toBe(addedLast.editor.presentation.slides[3]!.id)
+    const undoneLast = run(addedLast, UNDO)
+    expect(undoneLast.editor.presentation.slides).toHaveLength(3)
+    expect(undoneLast.editor.selectedSlideId).toBe(last.slides[2]!.id)
+
+    // Ajout au milieu : la nouvelle est à l'index 2, la suivante la remplace.
+    const middle = makeSlidesHistory(3, 1)
+    const addedMiddle = run(middle.history, { type: 'slide/add' })
+    const undoneMiddle = run(addedMiddle, UNDO)
+    expect(undoneMiddle.editor.selectedSlideId).toBe(middle.slides[2]!.id)
+    expect(undoneMiddle.editor.selectedElementId).toBeNull()
+  })
+
+  it('annuler un ajout d\'élément sélectionné remet selectedElementId à null', () => {
+    const { history, first } = makeHistory()
+    const added = createTextElement()
+    const withElement = run(history, { type: 'element/add', element: added })
+    expect(withElement.editor.selectedElementId).toBe(added.id)
+
+    const undone = run(withElement, UNDO)
+    expect(undone.editor.selectedElementId).toBeNull()
+    expect(undone.editor.selectedSlideId).toBe(first.id)
+  })
+
+  it('annuler un déplacement garde l\'élément sélectionné', () => {
+    const { history, text } = makeHistory()
+    const selected = run(
+      history,
+      { type: 'element/select', elementId: text.id },
+      { type: 'element/move', elementId: text.id, x: 5, y: 6 },
+    )
+    const undone = run(selected, UNDO)
+    expect(undone.editor.selectedElementId).toBe(text.id)
+    expect(undone.editor.presentation).toBe(history.editor.presentation)
+  })
+
+  it('refaire une suppression de diapositive sélectionnée retombe sur l\'index voisin', () => {
+    const { slides, history } = makeSlidesHistory(3, 1)
+    const [a, b, c] = slides
+    const deleted = run(history, { type: 'slide/delete', slideId: b!.id })
+    const undone = run(deleted, UNDO)
+    // On re-sélectionne la diapositive qui va disparaître au redo.
+    const selected = run(undone, { type: 'slide/select', slideId: b!.id })
+    expect(selected.editor.selectedSlideId).toBe(b!.id)
+
+    const redone = run(selected, REDO)
+    expect(redone.editor.presentation.slides.map((s) => s.id)).toEqual([a!.id, c!.id])
+    expect(redone.editor.selectedSlideId).toBe(c!.id)
+    expect(redone.editor.selectedElementId).toBeNull()
+  })
+
+  it('un undo n\'annule pas une sélection faite entre deux éditions', () => {
+    const { history, text, second } = makeHistory()
+    const edited = run(
+      history,
+      { type: 'element/move', elementId: text.id, x: 5, y: 6 },
+      { type: 'slide/select', slideId: second.id },
+    )
+    const undone = run(edited, UNDO)
+    expect(undone.editor.selectedSlideId).toBe(second.id)
+    expect(undone.editor.presentation).toBe(history.editor.presentation)
+
+    const redone = run(undone, REDO)
+    expect(redone.editor.selectedSlideId).toBe(second.id)
+  })
+})
+
+describe('immuabilité', () => {
+  it('ne modifie jamais un état gelé en profondeur', () => {
+    const { history, text, rect, second } = makeHistory()
+    const frozen = deepFreeze(history)
+    const snapshot = structuredClone(frozen)
+
+    expect(() => {
+      const edited = run(
+        frozen,
+        { type: 'element/add', element: createRectElement() },
+        { type: 'element/move', elementId: text.id, x: 1, y: 2 },
+        { type: 'slide/add' },
+        { type: 'slide/select', slideId: second.id },
+        { type: 'element/select', elementId: rect.id },
+      )
+      deepFreeze(edited)
+      const undone = run(edited, UNDO, UNDO, UNDO)
+      deepFreeze(undone)
+      run(undone, REDO, REDO, { type: 'element/delete', elementId: 'inconnu' })
+      run(frozen, UNDO, REDO)
+    }).not.toThrow()
+
+    expect(frozen).toEqual(snapshot)
+  })
+})
