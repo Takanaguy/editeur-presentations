@@ -1,6 +1,7 @@
 import { createRectElement, createSlide, createTextElement } from '../model/factories'
 import type { Slide } from '../model/types'
 import { editorReducer } from './reducer'
+import { deepFreeze, elementById, makeElementState, selectedElements } from './testHelpers'
 import type { EditorState } from './types'
 
 // Fabrique un état avec `count` diapositives (chacune avec un élément) et la
@@ -22,16 +23,6 @@ function makeState(count: number, selected = 0): EditorState {
 
 function ids(state: EditorState): string[] {
   return state.presentation.slides.map((s) => s.id)
-}
-
-// Gèle l'objet et tout ce qu'il contient : toute mutation lève une TypeError
-// (les modules ES s'exécutent en mode strict).
-function deepFreeze<T>(value: T): T {
-  if (typeof value === 'object' && value !== null && !Object.isFrozen(value)) {
-    Object.freeze(value)
-    Object.values(value).forEach(deepFreeze)
-  }
-  return value
 }
 
 describe('slide/add', () => {
@@ -255,5 +246,68 @@ describe('immuabilité', () => {
     }).not.toThrow()
 
     expect(state).toEqual(snapshot)
+  })
+})
+
+// Le détail est testé dans elementOps.test.ts : ici on vérifie l'aiguillage.
+describe('aiguillage des actions d\'éléments', () => {
+  it('route chaque action d\'élément vers la bonne opération', () => {
+    const { state, text, rect } = makeElementState()
+    const added = createRectElement({ x: 0, y: 0, width: 50, height: 50 })
+
+    const afterAdd = editorReducer(state, { type: 'element/add', element: added })
+    expect(afterAdd.selectedElementId).toBe(added.id)
+    expect(selectedElements(afterAdd).at(-1)?.id).toBe(added.id)
+
+    expect(editorReducer(state, { type: 'element/select', elementId: rect.id }).selectedElementId).toBe(
+      rect.id,
+    )
+
+    const afterDelete = editorReducer(state, { type: 'element/delete', elementId: rect.id })
+    expect(elementById(afterDelete, rect.id)).toBeUndefined()
+
+    const afterMove = editorReducer(state, { type: 'element/move', elementId: text.id, x: 7, y: 8 })
+    expect(elementById(afterMove, text.id)).toMatchObject({ x: 7, y: 8 })
+
+    const bounds = { x: 1, y: 2, width: 30, height: 40 }
+    const afterResize = editorReducer(state, { type: 'element/resize', elementId: text.id, bounds })
+    expect(elementById(afterResize, text.id)).toMatchObject(bounds)
+
+    const changes = { text: 'Salut' }
+    const afterUpdate = editorReducer(state, { type: 'element/update', elementId: text.id, changes })
+    expect(elementById(afterUpdate, text.id)).toMatchObject(changes)
+  })
+
+  it('retourne le même état pour une action d\'élément sans effet', () => {
+    const { state } = makeElementState()
+    expect(editorReducer(state, { type: 'element/delete', elementId: 'inconnu' })).toBe(state)
+    expect(editorReducer(state, { type: 'element/select', elementId: null })).toBe(state)
+  })
+
+  it('ne modifie jamais l\'état d\'origine pour aucune action d\'élément, gelé en profondeur', () => {
+    const { state, text, rect, image } = makeElementState()
+    const frozen = deepFreeze({ ...state, selectedElementId: rect.id })
+    const snapshot = structuredClone(frozen)
+
+    expect(() => {
+      editorReducer(frozen, { type: 'element/add', element: createTextElement() })
+      editorReducer(frozen, { type: 'element/select', elementId: text.id })
+      editorReducer(frozen, { type: 'element/delete', elementId: rect.id })
+      editorReducer(frozen, { type: 'element/move', elementId: image.id, x: 3, y: 4 })
+      editorReducer(frozen, {
+        type: 'element/resize',
+        elementId: image.id,
+        bounds: { x: 0, y: 0, width: 80, height: 80 },
+      })
+      editorReducer(frozen, { type: 'element/update', elementId: text.id, changes: { text: 'Neuf' } })
+    }).not.toThrow()
+
+    expect(frozen).toEqual(snapshot)
+  })
+
+  it('les actions d\'éléments ne changent pas les références des autres diapositives', () => {
+    const { state, text, second } = makeElementState()
+    const next = editorReducer(state, { type: 'element/move', elementId: text.id, x: 9, y: 9 })
+    expect(next.presentation.slides[1]).toBe(second)
   })
 })
