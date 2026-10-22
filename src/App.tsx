@@ -1,8 +1,13 @@
+import { EditorLayout } from './components/layout/EditorLayout'
+import { EditorProvider } from './hooks/EditorProvider'
+import { createDemoPresentation } from './model/demo'
+
 function App() {
   return (
-    <h1 className="p-8 text-3xl font-bold text-sky-700">
-      Éditeur de présentations
-    </h1>
+    // Démo temporaire : retirée à l'étape 7, quand on pourra ajouter des éléments.
+    <EditorProvider presentation={createDemoPresentation()}>
+      <EditorLayout />
+    </EditorProvider>
   )
 }
 
