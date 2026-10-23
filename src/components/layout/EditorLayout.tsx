@@ -110,6 +110,10 @@ export function EditorLayout() {
             slide={slide}
             selectedElementId={selectedElementId}
             onSelectElement={(elementId) => dispatch({ type: 'element/select', elementId })}
+            onMoveElement={(elementId, x, y) => dispatch({ type: 'element/move', elementId, x, y })}
+            onResizeElement={(elementId, bounds) =>
+              dispatch({ type: 'element/resize', elementId, bounds })
+            }
           />
         </div>
         <PropertiesPanel element={element} />

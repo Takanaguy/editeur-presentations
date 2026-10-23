@@ -16,6 +16,10 @@ export function ElementView({ element, onPointerDown }: ElementViewProps) {
     width: element.width,
     height: element.height,
     cursor: onPointerDown ? 'move' : undefined,
+    // Interactif : le doigt déplace l'élément au lieu de faire défiler la page,
+    // et la souris ne sélectionne pas le texte pendant le glisser.
+    touchAction: onPointerDown ? 'none' : undefined,
+    userSelect: onPointerDown ? 'none' : undefined,
   }
 
   switch (element.type) {
