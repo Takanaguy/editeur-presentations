@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { canRedo, canUndo } from '../../editor/history'
 import type { ElementChanges } from '../../editor/types'
 import { useEditor } from '../../hooks/useEditor'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
@@ -10,6 +11,7 @@ import { createRectElement, createTextElement } from '../../model/factories'
 import { SlideCanvas } from '../canvas/SlideCanvas'
 import { PropertiesPanel } from '../properties/PropertiesPanel'
 import { ElementToolbar } from '../toolbar/ElementToolbar'
+import { UndoRedoButtons } from '../toolbar/UndoRedoButtons'
 import { SlideToolbar } from '../thumbnails/SlideToolbar'
 import { ThumbnailPanel } from '../thumbnails/ThumbnailPanel'
 
@@ -64,7 +66,20 @@ export function EditorLayout() {
     if (element) dispatch({ type: 'element/delete', elementId: element.id })
   }
 
-  useKeyboardShortcuts({ hasSelection: element !== null, onDeleteSelection: deleteSelection })
+  function undo() {
+    dispatch({ type: 'history/undo' })
+  }
+
+  function redo() {
+    dispatch({ type: 'history/redo' })
+  }
+
+  useKeyboardShortcuts({
+    hasSelection: element !== null,
+    onDeleteSelection: deleteSelection,
+    onUndo: undo,
+    onRedo: redo,
+  })
 
   // Mesure l'image puis l'ajoute. Toute erreur d'import est affichée dans la barre d'outils.
   async function addImage(getSrc: () => Promise<string>, alt: string) {
@@ -92,7 +107,15 @@ export function EditorLayout() {
   return (
     <div className="flex h-screen flex-col bg-slate-50 text-slate-900">
       <header className="flex h-10 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4">
-        <h1 className="text-sm font-semibold">{presentation.title}</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-sm font-semibold">{presentation.title}</h1>
+          <UndoRedoButtons
+            canUndo={canUndo(history)}
+            canRedo={canRedo(history)}
+            onUndo={undo}
+            onRedo={redo}
+          />
+        </div>
         <span className="text-xs text-slate-500">Éditeur de présentations</span>
       </header>
       <div className="flex min-h-0 flex-1">

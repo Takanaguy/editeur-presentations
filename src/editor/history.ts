@@ -1,4 +1,4 @@
-import type { Presentation } from '../model/types'
+import type { Presentation, Slide } from '../model/types'
 import { editorReducer } from './reducer'
 import { createInitialState } from './state'
 import type { EditorAction, EditorState } from './types'
@@ -44,13 +44,31 @@ export function canRedo(state: HistoryState): boolean {
   return state.future.length > 0
 }
 
+// Première diapositive de `presentation` (dans son ordre) dont la référence diffère de
+// celle de même id dans `before`, ou qui n'y existait pas. Le reducer partage la structure :
+// une diapositive non touchée garde sa référence, et un simple réordonnancement ne change
+// aucune diapositive.
+function firstModifiedSlide(before: Presentation, presentation: Presentation): Slide | undefined {
+  const old = new Map(before.slides.map((s) => [s.id, s]))
+  return presentation.slides.find((s) => old.get(s.id) !== s)
+}
+
 // Après un undo/redo, la sélection peut viser une diapositive ou un élément qui
 // n'existe plus (annuler un ajout). On la ramène sur quelque chose de valide.
+// `previous` contient aussi la présentation d'avant l'opération, qui sert à repérer
+// ce qui a changé.
 export function reconcileSelection(previous: EditorState, presentation: Presentation): EditorState {
   const { slides } = presentation
   const stillThere = slides.find((s) => s.id === previous.selectedSlideId)
 
   if (stillThere) {
+    // Si la diapositive affichée n'a pas changé mais qu'une autre oui, on va voir
+    // la modification annulée ou rétablie, sinon l'utilisateur ne verrait rien bouger.
+    const wasModified = previous.presentation.slides.find((s) => s.id === stillThere.id) !== stillThere
+    if (!wasModified) {
+      const jumpTo = firstModifiedSlide(previous.presentation, presentation)
+      if (jumpTo) return { presentation, selectedSlideId: jumpTo.id, selectedElementId: null }
+    }
     // Même diapositive : l'élément sélectionné reste seulement s'il y existe encore.
     const keepElement = stillThere.elements.some((e) => e.id === previous.selectedElementId)
     return {

@@ -484,6 +484,163 @@ describe('reconcileSelection', () => {
   })
 })
 
+describe('reconcileSelection : saut vers la diapositive modifiée', () => {
+  // Trois diapositives A, B, C ; `before` est l'état de départ, A sélectionnée.
+  function setup() {
+    const { slides, history } = makeSlidesHistory(3, 0)
+    const [a, b, c] = slides as [Slide, Slide, Slide]
+    return { a, b, c, before: history.editor }
+  }
+  const withSlides = (before: EditorState, slides: Slide[]): Presentation => ({
+    ...before.presentation,
+    slides,
+  })
+
+  it('règle a : la diapositive sélectionnée a disparu, on garde l\'index borné', () => {
+    const { a, b, c, before } = setup()
+    const onB: EditorState = { ...before, selectedSlideId: b.id }
+    // C est modifiée en même temps : la règle a prime, pas de saut.
+    const c2: Slide = { ...c, elements: [createRectElement()] }
+    const result = reconcileSelection(onB, withSlides(before, [a, c2]))
+    expect(result.selectedSlideId).toBe(c2.id)
+    expect(result.selectedElementId).toBeNull()
+  })
+
+  it('règle b : la diapositive sélectionnée est modifiée, on la garde avec son élément', () => {
+    const { a, b, c, before } = setup()
+    const rect = createRectElement()
+    const a2: Slide = { ...a, elements: [rect] }
+    const b2: Slide = { ...b, elements: [createRectElement()] }
+    const selected: EditorState = { ...before, selectedElementId: rect.id }
+    const result = reconcileSelection(selected, withSlides(before, [a2, b2, c]))
+    expect(result.selectedSlideId).toBe(a.id)
+    expect(result.selectedElementId).toBe(rect.id)
+  })
+
+  it('règle c : la sélectionnée est inchangée, on saute à la première modifiée', () => {
+    const { a, b, c, before } = setup()
+    const b2: Slide = { ...b, elements: [createRectElement()] }
+    const c2: Slide = { ...c, elements: [createRectElement()] }
+    const selected: EditorState = { ...before, selectedElementId: 'x' }
+    const result = reconcileSelection(selected, withSlides(before, [a, b2, c2]))
+    expect(result.selectedSlideId).toBe(b.id)
+    expect(result.selectedElementId).toBeNull()
+    expect(result.presentation.slides[1]).toBe(b2)
+  })
+
+  it('règle c : une diapositive absente avant compte comme modifiée', () => {
+    const { a, b, c, before } = setup()
+    const added = createSlide()
+    const result = reconcileSelection(before, withSlides(before, [a, b, added, c]))
+    expect(result.selectedSlideId).toBe(added.id)
+  })
+
+  it('règle d : rien de modifié, la sélection est conservée', () => {
+    const { a, b, c, before } = setup()
+    const selected: EditorState = { ...before, selectedElementId: 'x' }
+    // Les mêmes diapositives dans un autre ordre : aucune n'est modifiée.
+    const result = reconcileSelection(selected, withSlides(before, [c, a, b]))
+    expect(result.selectedSlideId).toBe(a.id)
+    expect(result.selectedElementId).toBeNull()
+    const kept = makeElementState()
+    const withElement: EditorState = { ...kept.state, selectedElementId: kept.text.id }
+    const same = reconcileSelection(withElement, {
+      ...kept.state.presentation,
+      slides: [...kept.state.presentation.slides].reverse(),
+    })
+    expect(same.selectedSlideId).toBe(kept.first.id)
+    expect(same.selectedElementId).toBe(kept.text.id)
+  })
+})
+
+describe('sélection après undo et redo : saut vers la diapositive modifiée', () => {
+  // Trois diapositives, l'élément est ajouté sur B, puis on revient sur A.
+  function editBThenBackToA() {
+    const { slides, history } = makeSlidesHistory(3, 0)
+    const [a, b, c] = slides as [Slide, Slide, Slide]
+    const rect = createRectElement()
+    const state = run(
+      history,
+      { type: 'slide/select', slideId: b.id },
+      { type: 'element/add', element: rect },
+      { type: 'slide/select', slideId: a.id },
+    )
+    return { a, b, c, rect, history, state }
+  }
+
+  it('annuler une modification de B depuis A saute sur B', () => {
+    const { a, b, history, state } = editBThenBackToA()
+    expect(state.editor.selectedSlideId).toBe(a.id)
+
+    const undone = run(state, UNDO)
+    expect(undone.editor.presentation).toBe(history.editor.presentation)
+    expect(undone.editor.selectedSlideId).toBe(b.id)
+    expect(undone.editor.selectedElementId).toBeNull()
+  })
+
+  it('refaire la même chose saute aussi sur B', () => {
+    const { a, b, rect, state } = editBThenBackToA()
+    // On revient sur A après l'annulation, puis on refait.
+    const undone = run(state, UNDO, { type: 'slide/select', slideId: a.id })
+    expect(undone.editor.selectedSlideId).toBe(a.id)
+
+    const redone = run(undone, REDO)
+    expect(redone.editor.selectedSlideId).toBe(b.id)
+    expect(redone.editor.selectedElementId).toBeNull()
+    expect(redone.editor.presentation.slides[1]?.elements[0]?.id).toBe(rect.id)
+  })
+
+  it('annuler l\'ajout d\'une diapositive (règle a) garde l\'index voisin', () => {
+    const { slides, history } = makeSlidesHistory(3, 1)
+    const added = run(history, { type: 'slide/add' })
+    const undone = run(added, UNDO)
+    expect(undone.editor.selectedSlideId).toBe(slides[2]!.id)
+  })
+
+  it('refaire un ajout de diapositive saute sur la diapositive ajoutée', () => {
+    const { slides, history } = makeSlidesHistory(3, 1)
+    const added = run(history, { type: 'slide/add' })
+    const newId = added.editor.selectedSlideId
+    const redone = run(added, UNDO, REDO)
+    expect(redone.editor.presentation.slides.map((s) => s.id)).toEqual([
+      slides[0]!.id,
+      slides[1]!.id,
+      newId,
+      slides[2]!.id,
+    ])
+    expect(redone.editor.selectedSlideId).toBe(newId)
+  })
+
+  it('annuler une suppression de diapositive restaure et sélectionne la restaurée', () => {
+    const { slides, history } = makeSlidesHistory(3, 2)
+    const [a, b] = slides
+    // Suppression de B pendant qu'on est sur A : la sélection reste sur A.
+    const onA = run(history, { type: 'slide/select', slideId: a!.id })
+    const deleted = run(onA, { type: 'slide/delete', slideId: b!.id })
+    expect(deleted.editor.selectedSlideId).toBe(a!.id)
+
+    const undone = run(deleted, UNDO)
+    expect(undone.editor.presentation.slides.map((s) => s.id)).toContain(b!.id)
+    expect(undone.editor.selectedSlideId).toBe(b!.id)
+  })
+
+  it('annuler un réordonnancement ne change pas la sélection', () => {
+    const { slides, history } = makeSlidesHistory(3, 0)
+    const [a, b, c] = slides
+    const moved = run(
+      history,
+      { type: 'slide/move', slideId: c!.id, toIndex: 0 },
+      { type: 'slide/select', slideId: b!.id },
+    )
+    const undone = run(moved, UNDO)
+    expect(undone.editor.presentation.slides.map((s) => s.id)).toEqual([a!.id, b!.id, c!.id])
+    expect(undone.editor.selectedSlideId).toBe(b!.id)
+
+    const redone = run(undone, REDO)
+    expect(redone.editor.selectedSlideId).toBe(b!.id)
+  })
+})
+
 describe('sélection après undo et redo', () => {
   it('annuler un ajout de diapositive sélectionnée retombe sur l\'index voisin', () => {
     // Ajout après la dernière : la nouvelle est à l'index 3, qui n'existe plus après l'undo.
@@ -540,19 +697,21 @@ describe('sélection après undo et redo', () => {
     expect(redone.editor.selectedElementId).toBeNull()
   })
 
-  it('un undo n\'annule pas une sélection faite entre deux éditions', () => {
-    const { history, text, second } = makeHistory()
+  it('un undo n\'annule pas la sélection : il saute seulement sur la diapositive modifiée', () => {
+    const { history, text, first, second } = makeHistory()
     const edited = run(
       history,
       { type: 'element/move', elementId: text.id, x: 5, y: 6 },
       { type: 'slide/select', slideId: second.id },
     )
+    // Adapté à l'étape 10 : on était sur la 2, la modification annulée touche la 1, on y saute.
     const undone = run(edited, UNDO)
-    expect(undone.editor.selectedSlideId).toBe(second.id)
+    expect(undone.editor.selectedSlideId).toBe(first.id)
     expect(undone.editor.presentation).toBe(history.editor.presentation)
 
+    // La diapositive 1 est modifiée par le redo et déjà sélectionnée : elle reste affichée.
     const redone = run(undone, REDO)
-    expect(redone.editor.selectedSlideId).toBe(second.id)
+    expect(redone.editor.selectedSlideId).toBe(first.id)
   })
 })
 
