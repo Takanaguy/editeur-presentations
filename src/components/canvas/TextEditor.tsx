@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type KeyboardEvent } from 'react'
+import { MAX_TEXT_LENGTH } from '../../model/limits'
 import type { TextElement } from '../../model/types'
 import { TEXT_LINE_HEIGHT, TEXT_PADDING, textStyle } from './ElementView'
 
@@ -74,6 +75,7 @@ export function TextEditor({ element, onCommit, onCancel }: TextEditorProps) {
         aria-label="Modifier le texte"
         aria-describedby={hintId}
         defaultValue={element.text}
+        maxLength={MAX_TEXT_LENGTH}
         onBlur={(event) => finish(event.currentTarget.value)}
         onKeyDown={handleKeyDown}
         // Sinon le fond démarrerait un déplacement ou désélectionnerait l'élément.

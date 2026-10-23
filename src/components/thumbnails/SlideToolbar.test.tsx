@@ -12,6 +12,7 @@ function renderToolbar(overrides: Partial<Parameters<typeof SlideToolbar>[0]> = 
   }
   render(
     <SlideToolbar
+      canAddSlide={true}
       canDelete={true}
       canMoveUp={true}
       canMoveDown={true}
@@ -79,5 +80,29 @@ describe('SlideToolbar', () => {
 
     expect(screen.getByRole('button', { name: 'Nouvelle diapositive' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Dupliquer la diapositive' })).toBeEnabled()
+  })
+
+  it('à la limite de diapositives, désactive ajouter et dupliquer avec une infobulle explicite', async () => {
+    const h = renderToolbar({ canAddSlide: false })
+
+    for (const name of ['Nouvelle diapositive', 'Dupliquer la diapositive']) {
+      const button = screen.getByRole('button', { name })
+      expect(button).toBeDisabled()
+      expect(button).toHaveAttribute('title', 'Limite de 200 diapositives atteinte.')
+      await userEvent.click(button)
+    }
+    expect(h.onAdd).not.toHaveBeenCalled()
+    expect(h.onDuplicate).not.toHaveBeenCalled()
+    // Supprimer et déplacer ne sont pas concernés.
+    expect(screen.getByRole('button', { name: 'Supprimer la diapositive' })).toBeEnabled()
+  })
+
+  it('sous la limite, le bouton de duplication garde son infobulle habituelle', () => {
+    renderToolbar()
+
+    expect(screen.getByRole('button', { name: 'Dupliquer la diapositive' })).toHaveAttribute(
+      'title',
+      'Dupliquer la diapositive',
+    )
   })
 })

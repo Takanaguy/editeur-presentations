@@ -1,3 +1,4 @@
+import { MAX_ALT_LENGTH } from '../model/limits'
 import { altFromImageUrl, isValidImageUrl } from './imageUrl'
 
 describe('isValidImageUrl', () => {
@@ -47,6 +48,13 @@ describe('altFromImageUrl', () => {
     '',
   ])('retombe sur "Image" pour %j', (value) => {
     expect(altFromImageUrl(value)).toBe('Image')
+  })
+
+  it('tronque le résultat à la limite du texte alternatif', () => {
+    const long = 'a'.repeat(MAX_ALT_LENGTH + 100)
+    expect(altFromImageUrl('https://exemple.fr/' + long)).toHaveLength(MAX_ALT_LENGTH)
+    // Même quand le décodage échoue (séquence % mal formée).
+    expect(altFromImageUrl('https://exemple.fr/%' + long)).toHaveLength(MAX_ALT_LENGTH)
   })
 
   it('garde le segment brut si le décodage échoue', () => {

@@ -1,20 +1,36 @@
 import { useEffect, useRef, useState } from 'react'
+import { addBlockReason } from '../../editor/addLimits'
 import { canRedo, canUndo } from '../../editor/history'
 import type { ElementChanges, ReorderTarget } from '../../editor/types'
 import { useEditor } from '../../hooks/useEditor'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
+import { downloadTextFile } from '../../io/download'
 import { createImageElementFitted } from '../../io/imageElement'
 import { measureImage } from '../../io/imageSize'
 import { altFromImageUrl } from '../../io/imageUrl'
+import {
+  checkImportFileSize,
+  parsePresentation,
+  prepareExport,
+} from '../../io/presentationJson'
 import { ImageImportError, readImageFile } from '../../io/readImageFile'
+import { TextFileReadError, readTextFile } from '../../io/readTextFile'
 import { createRectElement, createTextElement } from '../../model/factories'
+import { MAX_ELEMENTS_PER_SLIDE, MAX_SLIDES } from '../../model/limits'
+import type { Slide, SlideElement } from '../../model/types'
 import { SlideCanvas } from '../canvas/SlideCanvas'
 import { PresentationMode } from '../presentation/PresentationMode'
 import { PropertiesPanel } from '../properties/PropertiesPanel'
 import { ElementToolbar } from '../toolbar/ElementToolbar'
+import { FileActions } from '../toolbar/FileActions'
 import { UndoRedoButtons } from '../toolbar/UndoRedoButtons'
 import { SlideToolbar } from '../thumbnails/SlideToolbar'
 import { ThumbnailPanel } from '../thumbnails/ThumbnailPanel'
+import { NoticeBanner, type Notice } from './NoticeBanner'
+import { TitleField } from './TitleField'
+
+// Durée d'affichage d'un message de succès avant fermeture automatique.
+const SUCCESS_NOTICE_MS = 5000
 
 // Seul composant connecté au store : il lit l'état et passe des props aux autres.
 export function EditorLayout() {
@@ -26,13 +42,31 @@ export function EditorLayout() {
   // Mode présentation ouvert : état d'interface, hors historique.
   const [presenting, setPresenting] = useState(false)
   const presentButtonRef = useRef<HTMLButtonElement>(null)
+  // Message d'export ou d'import sous l'en-tête : un état d'interface, hors historique.
+  const [notice, setNotice] = useState<Notice | null>(null)
+  // Titre en cours de saisie. Le store garde le titre nettoyé (espaces retirés) : sans ce
+  // brouillon, l'espace tapé après un mot serait effacé aussitôt. null = on affiche le store.
+  const [titleDraft, setTitleDraft] = useState<string | null>(null)
+  // Numéro du dernier import lancé : un import plus lent ne doit pas écraser un plus récent.
+  const importToken = useRef(0)
+  // Boutons Exporter et Importer, et lequel a produit le message affiché : à la fermeture du
+  // bandeau, le focus retourne à ce bouton (sinon il serait perdu avec le bouton Fermer).
+  const exportButtonRef = useRef<HTMLButtonElement>(null)
+  const importButtonRef = useRef<HTMLButtonElement>(null)
+  const lastFileAction = useRef<'import' | 'export'>('import')
   const { presentation, selectedSlideId, selectedElementId } = history.editor
 
   // Id de la diapositive sélectionnée MAINTENANT, lisible depuis un import asynchrone
   // (même motif que useKeyboardShortcuts : écrit dans un effet, pas pendant le rendu).
   const currentSlideIdRef = useRef(selectedSlideId)
+  // Idem pour la présentation et le mode présentation : un import asynchrone doit relire
+  // l'état ACTUEL après ses await, pas celui du rendu où il a démarré.
+  const currentPresentationRef = useRef(presentation)
+  const presentingRef = useRef(presenting)
   useEffect(() => {
     currentSlideIdRef.current = selectedSlideId
+    currentPresentationRef.current = presentation
+    presentingRef.current = presenting
   })
 
   const { slides } = presentation
@@ -40,6 +74,9 @@ export function EditorLayout() {
   const slide = slides[slideIndex]
   // Ne devrait jamais arriver : le reducer garantit une sélection valide.
   if (!slide) throw new Error('La diapositive sélectionnée est introuvable')
+  // Les fonctions ci-dessous sont déclarées plus bas : TypeScript n'y garde pas le test
+  // précédent sur `slide`, d'où cet alias de type Slide.
+  const activeSlide: Slide = slide
   const elementIndex = slide.elements.findIndex((e) => e.id === selectedElementId)
   const element = slide.elements[elementIndex] ?? null
 
@@ -75,8 +112,19 @@ export function EditorLayout() {
     if (element) dispatch({ type: 'element/delete', elementId: element.id })
   }
 
+  // Ajoute un élément neuf, sauf si une limite l'interdit : le message s'affiche alors dans
+  // la barre d'outils au lieu de laisser le clic sans effet apparent.
+  function addChecked(newElement: SlideElement) {
+    const reason = addBlockReason(presentation, activeSlide, newElement)
+    setImportError(reason)
+    if (!reason) dispatch({ type: 'element/add', element: newElement })
+  }
+
   function duplicateSelection() {
-    if (element) dispatch({ type: 'element/duplicate', elementId: element.id })
+    if (!element) return
+    const reason = addBlockReason(presentation, activeSlide, element)
+    setImportError(reason)
+    if (!reason) dispatch({ type: 'element/duplicate', elementId: element.id })
   }
 
   // Flèches : position calculée depuis l'élément actuel (le hook relit la dernière valeur à
@@ -89,6 +137,96 @@ export function EditorLayout() {
       key: `nudge:${element.id}`,
       action: { type: 'element/move', elementId: element.id, x: element.x + dx, y: element.y + dy },
     })
+  }
+
+  function changeTitle(title: string) {
+    setTitleDraft(title)
+    // Une frappe continue forme UNE seule entrée d'historique.
+    dispatch({
+      type: 'history/coalesced',
+      key: 'rename-title',
+      action: { type: 'presentation/rename', title },
+    })
+  }
+
+  function endTitleEdit() {
+    setTitleDraft(null)
+    dispatch({ type: 'history/seal' })
+  }
+
+  function exportPresentation() {
+    if (presenting) return
+    lastFileAction.current = 'export'
+    const result = prepareExport(presentation)
+    if (!result.ok) {
+      setNotice({ kind: 'error', title: 'Export impossible', messages: [result.message] })
+      return
+    }
+    if (downloadTextFile(result.fileName, result.text)) {
+      setNotice({ kind: 'success', title: `Présentation exportée : ${result.fileName}`, messages: [] })
+    } else {
+      setNotice({
+        kind: 'error',
+        title: 'Export impossible',
+        messages: ['Le navigateur a refusé le téléchargement.'],
+      })
+    }
+  }
+
+  function closeNotice() {
+    setNotice(null)
+    const button = lastFileAction.current === 'export' ? exportButtonRef : importButtonRef
+    button.current?.focus()
+  }
+
+  async function importFile(file: File) {
+    if (presenting) return
+    lastFileAction.current = 'import'
+    const token = ++importToken.current
+    const failure = (messages: string[]): Notice => ({
+      kind: 'error',
+      title: 'Import impossible',
+      messages,
+    })
+    setNotice(null)
+
+    const sizeError = checkImportFileSize(file.size)
+    if (sizeError) {
+      setNotice(failure([sizeError]))
+      return
+    }
+    try {
+      const text = await readTextFile(file)
+      // Un import plus récent a été lancé pendant la lecture : ce résultat est périmé.
+      if (token !== importToken.current) return
+      // La présentation a pu s'ouvrir pendant la lecture : l'éditeur est alors inerte, on
+      // n'y touche pas.
+      if (presentingRef.current) {
+        setNotice(failure(['Import annulé : la présentation est en cours.']))
+        return
+      }
+      const result = parsePresentation(text)
+      if (!result.ok) {
+        setNotice(failure(result.errors))
+        return
+      }
+      setTitleDraft(null)
+      dispatch({ type: 'presentation/load', presentation: result.presentation })
+      const count = result.presentation.slides.length
+      setNotice({
+        kind: 'success',
+        // Un titre vide reste vide dans le modèle ; on affiche le repli, pas des guillemets vides.
+        title: `Présentation « ${result.presentation.title || 'Sans titre'} » importée : ${count} ${count > 1 ? 'diapositives' : 'diapositive'}.`,
+        messages: [],
+      })
+    } catch (error) {
+      if (token !== importToken.current) return
+      setNotice(
+        failure([
+          error instanceof TextFileReadError ? error.message : 'Impossible de lire le fichier.',
+        ]),
+      )
+    }
   }
 
   function undo() {
@@ -119,6 +257,14 @@ export function EditorLayout() {
     wasPresenting.current = presenting
   }, [presenting])
 
+  // Le succès se ferme tout seul ; l'erreur reste jusqu'à fermeture ou prochaine action.
+  // Le minuteur est nettoyé au démontage et à chaque nouveau message.
+  useEffect(() => {
+    if (notice?.kind !== 'success') return
+    const timer = setTimeout(() => setNotice(null), SUCCESS_NOTICE_MS)
+    return () => clearTimeout(timer)
+  }, [notice])
+
   // Mesure l'image puis l'ajoute. Toute erreur d'import est affichée dans la barre d'outils.
   async function addImage(getSrc: () => Promise<string>, alt: string) {
     // element/add vise la diapositive sélectionnée au moment du dispatch : on retient
@@ -134,7 +280,14 @@ export function EditorLayout() {
           "L'image n'a pas été ajoutée : la diapositive a changé pendant l'import.",
         )
       }
-      dispatch({ type: 'element/add', element: createImageElementFitted(src, alt, natural) })
+      // La limite a pu être atteinte pendant le chargement : on vérifie APRÈS les await, sur
+      // l'état actuel (le reducer refuserait sinon sans rien dire).
+      const latest = currentPresentationRef.current
+      const target = latest.slides.find((s) => s.id === startSlideId)
+      const imageElement = createImageElementFitted(src, alt, natural)
+      const reason = target ? addBlockReason(latest, target, imageElement) : null
+      if (reason) throw new ImageImportError(reason)
+      dispatch({ type: 'element/add', element: imageElement })
     } catch (error) {
       setImportError(
         error instanceof ImageImportError ? error.message : "Impossible d'ajouter l'image.",
@@ -149,7 +302,13 @@ export function EditorLayout() {
       <div className="flex h-screen flex-col bg-slate-50 text-slate-900" inert={presenting}>
         <header className="flex h-10 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4">
           <div className="flex items-center gap-3">
-            <h1 className="text-sm font-semibold">{presentation.title}</h1>
+            {/* Le champ ci-dessous est le titre visible ; ce titre de page reste pour la structure. */}
+            <h1 className="sr-only">{presentation.title}</h1>
+            <TitleField
+              value={titleDraft ?? presentation.title}
+              onChange={changeTitle}
+              onBlur={endTitleEdit}
+            />
             <UndoRedoButtons
               canUndo={canUndo(history)}
               canRedo={canRedo(history)}
@@ -158,6 +317,13 @@ export function EditorLayout() {
             />
           </div>
           <div className="flex items-center gap-3">
+            <FileActions
+              onExport={exportPresentation}
+              onImportFile={(file) => void importFile(file)}
+              disabled={presenting}
+              exportRef={exportButtonRef}
+              importRef={importButtonRef}
+            />
             <span className="text-xs text-slate-500">Éditeur de présentations</span>
             <button
               ref={presentButtonRef}
@@ -174,9 +340,11 @@ export function EditorLayout() {
             </button>
           </div>
         </header>
+        <NoticeBanner notice={notice} onClose={closeNotice} />
         <div className="flex min-h-0 flex-1">
           <div className="flex min-h-0 w-48 shrink-0 flex-col border-r border-slate-200 bg-white">
             <SlideToolbar
+              canAddSlide={slides.length < MAX_SLIDES}
               canDelete={slides.length > 1}
               canMoveUp={slideIndex > 0}
               canMoveDown={slideIndex < slides.length - 1}
@@ -199,16 +367,11 @@ export function EditorLayout() {
           </div>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <ElementToolbar
+              canAddElement={slide.elements.length < MAX_ELEMENTS_PER_SLIDE}
               canDelete={element !== null}
               error={importError}
-              onAddText={() => {
-                setImportError(null)
-                dispatch({ type: 'element/add', element: createTextElement() })
-              }}
-              onAddRect={() => {
-                setImportError(null)
-                dispatch({ type: 'element/add', element: createRectElement() })
-              }}
+              onAddText={() => addChecked(createTextElement())}
+              onAddRect={() => addChecked(createRectElement())}
               onAddImageFromUrl={(url) => void addImage(() => Promise.resolve(url), altFromImageUrl(url))}
               onAddImageFromFile={(file) => void addImage(() => readImageFile(file), file.name)}
               onDelete={deleteSelection}

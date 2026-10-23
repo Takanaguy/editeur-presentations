@@ -1,4 +1,5 @@
 import { createSlide, duplicateSlide } from '../model/factories'
+import { MAX_SLIDES } from '../model/limits'
 import type { Slide } from '../model/types'
 import type { EditorState } from './types'
 
@@ -15,8 +16,11 @@ function withSlides(state: EditorState, slides: Slide[]): EditorState['presentat
   return { ...state.presentation, slides }
 }
 
+// Ajouter et dupliquer sont refusés à la limite MAX_SLIDES (même state) : l'import de fichier
+// refuserait une présentation plus grande.
 export function addSlide(state: EditorState): EditorState {
   const { slides } = state.presentation
+  if (slides.length >= MAX_SLIDES) return state
   const selectedIndex = slides.findIndex((s) => s.id === state.selectedSlideId)
   // Sélection introuvable (état incohérent) : on ajoute à la fin plutôt que de planter.
   const index = selectedIndex === -1 ? slides.length : selectedIndex + 1
@@ -50,7 +54,7 @@ export function duplicateSlideAction(state: EditorState, slideId: string): Edito
   const { slides } = state.presentation
   const index = slides.findIndex((s) => s.id === slideId)
   const original = slides[index]
-  if (!original) return state
+  if (!original || slides.length >= MAX_SLIDES) return state
 
   const copy = duplicateSlide(original)
   return {

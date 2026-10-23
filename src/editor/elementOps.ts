@@ -1,5 +1,7 @@
 import { createId } from '../model/ids'
+import { MAX_ALT_LENGTH, MAX_TEXT_LENGTH } from '../model/limits'
 import type { Slide, SlideElement, TextAlign } from '../model/types'
+import { addBlockReason } from './addLimits'
 import { clamp, clampBounds, type Bounds } from './geometry'
 import type { EditorState, ElementChanges, ReorderTarget } from './types'
 
@@ -75,6 +77,8 @@ export function addElement(state: EditorState, element: SlideElement): EditorSta
   const slide = findSelectedSlide(state)
   if (!slide) return state
   if (slide.elements.some((e) => e.id === element.id)) return state
+  // Limites partagées avec l'import de fichier : au delà, un export ne pourrait plus être relu.
+  if (addBlockReason(state.presentation, slide, element)) return state
 
   // Ajouté en dernier = au premier plan (l'ordre du tableau est l'ordre d'empilement).
   const added: SlideElement = { ...element, ...clampBounds(element) }
@@ -91,6 +95,8 @@ export function duplicateElement(state: EditorState, elementId: string): EditorS
   const slide = findSelectedSlide(state)
   const original = slide?.elements.find((e) => e.id === elementId)
   if (!slide || !original) return state
+  // La copie pèse autant que l'original.
+  if (addBlockReason(state.presentation, slide, original)) return state
 
   const copy: SlideElement = {
     ...original,
@@ -238,7 +244,8 @@ export function updateElement(
       case 'text':
         next = {
           ...element,
-          text: pick('text', element.text, isString),
+          // Tronqués aux limites de l'import de fichier (voir model/limits.ts).
+          text: pick('text', element.text, isString, (s) => s.slice(0, MAX_TEXT_LENGTH)),
           fontSize: pick('fontSize', element.fontSize, isNumber, (n) =>
             clamp(n, MIN_FONT_SIZE, MAX_FONT_SIZE),
           ),
@@ -262,7 +269,7 @@ export function updateElement(
         next = {
           ...element,
           src: pick('src', element.src, isString),
-          alt: pick('alt', element.alt, isString),
+          alt: pick('alt', element.alt, isString, (s) => s.slice(0, MAX_ALT_LENGTH)),
           opacity: pickOpacity(element.opacity),
         }
         break

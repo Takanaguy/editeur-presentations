@@ -1,4 +1,16 @@
-import { createRectElement, createSlide, createTextElement } from '../model/factories'
+import {
+  createImageElement,
+  createRectElement,
+  createSlide,
+  createTextElement,
+} from '../model/factories'
+import {
+  MAX_ALT_LENGTH,
+  MAX_ELEMENTS_PER_SLIDE,
+  MAX_SLIDES,
+  MAX_TEXT_LENGTH,
+  MAX_TOTAL_IMAGE_SRC_LENGTH,
+} from '../model/limits'
 import type { Slide } from '../model/types'
 import { editorReducer } from './reducer'
 import { deepFreeze, elementById, makeElementState, selectedElements } from './testHelpers'
@@ -322,5 +334,205 @@ describe('aiguillage des actions d\'éléments', () => {
     const { state, text, second } = makeElementState()
     const next = editorReducer(state, { type: 'element/move', elementId: text.id, x: 9, y: 9 })
     expect(next.presentation.slides[1]).toBe(second)
+  })
+})
+
+describe('aiguillage des actions de présentation', () => {
+  it('presentation/load remplace tout et sélectionne la première diapositive', () => {
+    const { state } = makeElementState()
+    const presentation = { version: 1 as const, title: 'Autre', slides: [createSlide(), createSlide()] }
+    const next = editorReducer(state, { type: 'presentation/load', presentation })
+    expect(next.presentation).toBe(presentation)
+    expect(next.selectedSlideId).toBe(presentation.slides[0]?.id)
+    expect(next.selectedElementId).toBeNull()
+  })
+
+  it('presentation/load avec la même référence ou sans diapositive : même state', () => {
+    const { state } = makeElementState()
+    expect(editorReducer(state, { type: 'presentation/load', presentation: state.presentation })).toBe(state)
+    const empty = { version: 1 as const, title: 'Vide', slides: [] }
+    expect(editorReducer(state, { type: 'presentation/load', presentation: empty })).toBe(state)
+  })
+
+  it('presentation/rename change le titre, et le même titre ne change rien', () => {
+    const { state } = makeElementState()
+    const next = editorReducer(state, { type: 'presentation/rename', title: ' Neuf ' })
+    expect(next.presentation.title).toBe('Neuf')
+    expect(editorReducer(next, { type: 'presentation/rename', title: 'Neuf' })).toBe(next)
+  })
+
+  it('ne modifie pas un état gelé en profondeur', () => {
+    const { state } = makeElementState()
+    const frozen = deepFreeze({ ...state })
+    const presentation = deepFreeze({ version: 1 as const, title: 'A', slides: [createSlide()] })
+    expect(() => {
+      editorReducer(frozen, { type: 'presentation/load', presentation })
+      editorReducer(frozen, { type: 'presentation/rename', title: 'B' })
+    }).not.toThrow()
+  })
+})
+
+describe('limites partagées avec l\'import de fichier', () => {
+  function stateWithSlides(count: number): EditorState {
+    const slides: Slide[] = Array.from({ length: count }, () => createSlide())
+    const first = slides[0]
+    if (!first) throw new Error('au moins une diapositive')
+    return {
+      presentation: { version: 1, title: 'Test', slides },
+      selectedSlideId: first.id,
+      selectedElementId: null,
+    }
+  }
+
+  function stateWithElements(count: number): EditorState {
+    const slide = createSlide()
+    slide.elements = Array.from({ length: count }, () => createRectElement())
+    return {
+      presentation: { version: 1, title: 'Test', slides: [slide] },
+      selectedSlideId: slide.id,
+      selectedElementId: null,
+    }
+  }
+
+  it(`slide/add : accepté à ${MAX_SLIDES - 1} diapositives, refusé à ${MAX_SLIDES}`, () => {
+    const below = stateWithSlides(MAX_SLIDES - 1)
+    expect(editorReducer(below, { type: 'slide/add' }).presentation.slides).toHaveLength(MAX_SLIDES)
+    const full = stateWithSlides(MAX_SLIDES)
+    expect(editorReducer(full, { type: 'slide/add' })).toBe(full)
+  })
+
+  it(`slide/duplicate : accepté à ${MAX_SLIDES - 1} diapositives, refusé à ${MAX_SLIDES}`, () => {
+    const below = stateWithSlides(MAX_SLIDES - 1)
+    const id = below.selectedSlideId
+    expect(
+      editorReducer(below, { type: 'slide/duplicate', slideId: id }).presentation.slides,
+    ).toHaveLength(MAX_SLIDES)
+    const full = stateWithSlides(MAX_SLIDES)
+    expect(editorReducer(full, { type: 'slide/duplicate', slideId: full.selectedSlideId })).toBe(full)
+  })
+
+  it(`element/add : accepté à ${MAX_ELEMENTS_PER_SLIDE - 1} éléments, refusé à ${MAX_ELEMENTS_PER_SLIDE}`, () => {
+    const below = stateWithElements(MAX_ELEMENTS_PER_SLIDE - 1)
+    expect(selectedElements(editorReducer(below, { type: 'element/add', element: createTextElement() }))).toHaveLength(
+      MAX_ELEMENTS_PER_SLIDE,
+    )
+    const full = stateWithElements(MAX_ELEMENTS_PER_SLIDE)
+    expect(editorReducer(full, { type: 'element/add', element: createTextElement() })).toBe(full)
+  })
+
+  it('element/duplicate : refusé à la limite, accepté juste en dessous', () => {
+    const below = stateWithElements(MAX_ELEMENTS_PER_SLIDE - 1)
+    const target = selectedElements(below)[0]!.id
+    expect(
+      selectedElements(editorReducer(below, { type: 'element/duplicate', elementId: target })),
+    ).toHaveLength(MAX_ELEMENTS_PER_SLIDE)
+    const full = stateWithElements(MAX_ELEMENTS_PER_SLIDE)
+    const fullTarget = selectedElements(full)[0]!.id
+    expect(editorReducer(full, { type: 'element/duplicate', elementId: fullTarget })).toBe(full)
+  })
+
+  it('la limite d\'éléments vaut par diapositive : une autre diapositive reste libre', () => {
+    const full = stateWithElements(MAX_ELEMENTS_PER_SLIDE)
+    const other = createSlide()
+    const state: EditorState = {
+      ...full,
+      presentation: { ...full.presentation, slides: [...full.presentation.slides, other] },
+    }
+    const onOther = editorReducer(state, { type: 'slide/select', slideId: other.id })
+    expect(selectedElements(editorReducer(onOther, { type: 'element/add', element: createTextElement() }))).toHaveLength(1)
+  })
+
+  it('element/update tronque le texte à la limite', () => {
+    const { state, text } = makeElementState()
+    const next = editorReducer(state, {
+      type: 'element/update',
+      elementId: text.id,
+      changes: { text: 'a'.repeat(MAX_TEXT_LENGTH + 50) },
+    })
+    expect(elementById(next, text.id)).toHaveProperty('text', 'a'.repeat(MAX_TEXT_LENGTH))
+  })
+
+  it('element/update tronque le texte alternatif à la limite', () => {
+    const { state, image } = makeElementState()
+    const next = editorReducer(state, {
+      type: 'element/update',
+      elementId: image.id,
+      changes: { alt: 'b'.repeat(MAX_ALT_LENGTH + 1) },
+    })
+    expect(elementById(next, image.id)).toHaveProperty('alt', 'b'.repeat(MAX_ALT_LENGTH))
+  })
+
+  it('element/update : un texte déjà tronqué à la limite et identique ne change rien (même state)', () => {
+    const { state, text } = makeElementState()
+    const full = editorReducer(state, {
+      type: 'element/update',
+      elementId: text.id,
+      changes: { text: 'a'.repeat(MAX_TEXT_LENGTH) },
+    })
+    const again = editorReducer(full, {
+      type: 'element/update',
+      elementId: text.id,
+      changes: { text: 'a'.repeat(MAX_TEXT_LENGTH + 10) },
+    })
+    expect(again).toBe(full)
+  })
+})
+
+describe('poids total des images', () => {
+  // Image dont la source fait exactement `length` caractères.
+  const imageOfLength = (length: number) =>
+    createImageElement('data:image/png;base64,' + 'A'.repeat(length - 22))
+
+  function stateWithImageBudgetLeft(margin: number): EditorState {
+    const slide = createSlide()
+    slide.elements = [imageOfLength(MAX_TOTAL_IMAGE_SRC_LENGTH - margin)]
+    return {
+      presentation: { version: 1, title: 'Test', slides: [slide] },
+      selectedSlideId: slide.id,
+      selectedElementId: null,
+    }
+  }
+
+  it('element/add refuse une image qui ferait dépasser le cumul (même state)', () => {
+    const state = stateWithImageBudgetLeft(100)
+    expect(editorReducer(state, { type: 'element/add', element: imageOfLength(101) })).toBe(state)
+  })
+
+  it('element/add accepte une image qui tient exactement dans le budget', () => {
+    const state = stateWithImageBudgetLeft(100)
+    const next = editorReducer(state, { type: 'element/add', element: imageOfLength(100) })
+    expect(selectedElements(next)).toHaveLength(2)
+  })
+
+  it('element/add accepte quand même un texte et un rectangle', () => {
+    const state = stateWithImageBudgetLeft(0)
+    const withText = editorReducer(state, { type: 'element/add', element: createTextElement() })
+    const withRect = editorReducer(withText, { type: 'element/add', element: createRectElement() })
+    expect(selectedElements(withRect)).toHaveLength(3)
+  })
+
+  it('element/duplicate refuse la copie d\'une image qui ferait dépasser le cumul', () => {
+    const state = stateWithImageBudgetLeft(100)
+    const image = selectedElements(state)[0]!
+    expect(editorReducer(state, { type: 'element/duplicate', elementId: image.id })).toBe(state)
+  })
+
+  it('element/duplicate accepte la copie d\'un texte même quand le budget est plein', () => {
+    const state = stateWithImageBudgetLeft(0)
+    const withText = editorReducer(state, { type: 'element/add', element: createTextElement() })
+    const text = selectedElements(withText)[1]!
+    const next = editorReducer(withText, { type: 'element/duplicate', elementId: text.id })
+    expect(selectedElements(next)).toHaveLength(3)
+  })
+
+  it('le cumul compte les images des autres diapositives', () => {
+    const state = stateWithImageBudgetLeft(100)
+    const other = createSlide()
+    const withOther: EditorState = {
+      ...state,
+      presentation: { ...state.presentation, slides: [...state.presentation.slides, other] },
+    }
+    const onOther = editorReducer(withOther, { type: 'slide/select', slideId: other.id })
+    expect(editorReducer(onOther, { type: 'element/add', element: imageOfLength(101) })).toBe(onOther)
   })
 })

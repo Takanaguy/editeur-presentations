@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createTextElement } from '../../model/factories'
+import { MAX_TEXT_LENGTH } from '../../model/limits'
 import { TextEditor } from './TextEditor'
 
 function setup(overrides: Parameters<typeof createTextElement>[0] = { text: 'Bonjour' }) {
@@ -11,6 +12,14 @@ function setup(overrides: Parameters<typeof createTextElement>[0] = { text: 'Bon
   const textarea = screen.getByRole('textbox', { name: 'Modifier le texte' }) as HTMLTextAreaElement
   return { textarea, onCommit, onCancel, element }
 }
+
+describe('TextEditor : limite de longueur', () => {
+  it("limite la saisie à la longueur acceptée par l'import de fichier", () => {
+    const { textarea } = setup()
+
+    expect(textarea).toHaveAttribute('maxlength', String(MAX_TEXT_LENGTH))
+  })
+})
 
 describe('TextEditor : style du texte', () => {
   it('applique gras, italique et alignement comme le rendu normal', () => {

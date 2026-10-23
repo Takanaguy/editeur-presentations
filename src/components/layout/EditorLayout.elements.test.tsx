@@ -6,6 +6,14 @@ import { MAX_IMAGE_FILE_SIZE } from '../../io/readImageFile'
 import { createThreeSlidePresentation } from '../../test/fixtures'
 import { EditorLayout } from './EditorLayout'
 
+// L'alerte de la barre d'outils d'ajout (l'en-tête a aussi sa propre zone d'alerte, toujours là).
+const addToolbar = () => within(screen.getByRole('toolbar', { name: 'Ajouter des éléments' }))
+const toolbarAlert = {
+  findByRole: () => addToolbar().findByRole('alert'),
+  getByRole: () => addToolbar().getByRole('alert'),
+  queryByRole: () => addToolbar().queryByRole('alert'),
+}
+
 // jsdom ne charge pas les images : on garde fitImageSize réel et on simule seulement la mesure.
 vi.mock('../../io/imageSize', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../io/imageSize')>()),
@@ -183,7 +191,7 @@ describe('EditorLayout : ajout d\'images', () => {
       'https://exemple.fr/x.png{Enter}',
     )
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Impossible de charger l\'image.')
+    expect(await toolbarAlert.findByRole()).toHaveTextContent('Impossible de charger l\'image.')
     expect(images()).toHaveLength(0)
     expect(within(panel()).getByText('Aucun élément sélectionné')).toBeInTheDocument()
   })
@@ -217,7 +225,7 @@ describe('EditorLayout : ajout d\'images', () => {
       'javascript:alert(1){Enter}',
     )
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Adresse d\'image invalide')
+    expect(toolbarAlert.getByRole()).toHaveTextContent('Adresse d\'image invalide')
     expect(images()).toHaveLength(0)
     expect(measureImage).not.toHaveBeenCalled()
   })
@@ -241,7 +249,7 @@ describe('EditorLayout : ajout d\'images', () => {
 
     await userEvent.upload(screen.getByLabelText('Choisir un fichier image'), file)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('L\'image dépasse 2 Mo.')
+    expect(await toolbarAlert.findByRole()).toHaveTextContent('L\'image dépasse 2 Mo.')
     expect(images()).toHaveLength(0)
   })
 
@@ -252,7 +260,7 @@ describe('EditorLayout : ajout d\'images', () => {
 
     await userEvent.upload(screen.getByLabelText('Choisir un fichier image'), file)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Impossible d\'ajouter l\'image.')
+    expect(await toolbarAlert.findByRole()).toHaveTextContent('Impossible d\'ajouter l\'image.')
     expect(images()).toHaveLength(0)
   })
 
@@ -263,12 +271,12 @@ describe('EditorLayout : ajout d\'images', () => {
       type: 'image/png',
     })
     await userEvent.upload(input, big)
-    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(await toolbarAlert.findByRole()).toBeInTheDocument()
 
     await userEvent.upload(input, new File(['abc'], 'ok.png', { type: 'image/png' }))
 
     await waitFor(() => expect(images()).toHaveLength(1))
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(toolbarAlert.queryByRole()).not.toBeInTheDocument()
   })
 
   it('l\'erreur disparaît au prochain clic sur un bouton d\'ajout', async () => {
@@ -277,11 +285,11 @@ describe('EditorLayout : ajout d\'images', () => {
       type: 'image/png',
     })
     await userEvent.upload(screen.getByLabelText('Choisir un fichier image'), big)
-    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(await toolbarAlert.findByRole()).toBeInTheDocument()
 
     await click('Texte')
 
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(toolbarAlert.queryByRole()).not.toBeInTheDocument()
   })
 })
 
@@ -317,7 +325,7 @@ describe('EditorLayout : changement de diapositive pendant un import', () => {
     await click('Diapositive 2')
     await finish({ width: 200, height: 100 })
 
-    expect(screen.getByRole('alert')).toHaveTextContent(MISSED)
+    expect(toolbarAlert.getByRole()).toHaveTextContent(MISSED)
     for (const number of [1, 2, 3]) {
       await click(`Diapositive ${number}`)
       expect(images()).toHaveLength(0)
@@ -333,7 +341,7 @@ describe('EditorLayout : changement de diapositive pendant un import', () => {
     await click('Supprimer la diapositive')
     await finish({ width: 200, height: 100 })
 
-    expect(screen.getByRole('alert')).toHaveTextContent(MISSED)
+    expect(toolbarAlert.getByRole()).toHaveTextContent(MISSED)
     for (const number of [1, 2]) {
       await click(`Diapositive ${number}`)
       expect(images()).toHaveLength(0)
@@ -349,6 +357,6 @@ describe('EditorLayout : changement de diapositive pendant un import', () => {
     await finish({ width: 200, height: 100 })
 
     expect(images()).toHaveLength(1)
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(toolbarAlert.queryByRole()).not.toBeInTheDocument()
   })
 })

@@ -58,4 +58,9 @@ export type ElementAction =
   // premier plan). Sans effet s'il est déjà à la limite demandée.
   | { type: 'element/reorder'; elementId: string; to: ReorderTarget }
 
-export type EditorAction = SlideAction | ElementAction
+export type PresentationAction =
+  // Remplace toute la présentation (import) et sélectionne sa première diapositive.
+  | { type: 'presentation/load'; presentation: Presentation }
+  | { type: 'presentation/rename'; title: string }
+
+export type EditorAction = SlideAction | ElementAction | PresentationAction

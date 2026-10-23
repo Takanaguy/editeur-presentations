@@ -128,4 +128,11 @@ describe('ElementView', () => {
     expect(img).toHaveAttribute('draggable', 'false')
     expect(img).toHaveStyle({ objectFit: 'contain' })
   })
+
+  it("n'envoie pas l'adresse de la page au serveur de l'image (referrerPolicy)", () => {
+    const element = createImageElement('https://exemple.fr/a.png', { alt: 'Un logo' })
+    render(<ElementView element={element} />)
+
+    expect(screen.getByRole('img', { name: 'Un logo' })).toHaveAttribute('referrerpolicy', 'no-referrer')
+  })
 })

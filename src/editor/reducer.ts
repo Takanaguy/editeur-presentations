@@ -8,10 +8,11 @@ import {
   selectElement,
   updateElement,
 } from './elementOps'
+import { loadPresentation, renamePresentation } from './presentationOps'
 import { addSlide, deleteSlide, duplicateSlideAction, moveSlide, selectSlide } from './slideOps'
 import type { EditorAction, EditorState } from './types'
 
-// Simple aiguillage : la logique vit dans slideOps.ts et elementOps.ts.
+// Simple aiguillage : la logique vit dans slideOps.ts, elementOps.ts et presentationOps.ts.
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case 'slide/add':
@@ -40,6 +41,10 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return updateElement(state, action.elementId, action.changes)
     case 'element/reorder':
       return reorderElement(state, action.elementId, action.to)
+    case 'presentation/load':
+      return loadPresentation(state, action.presentation)
+    case 'presentation/rename':
+      return renamePresentation(state, action.title)
     default:
       return assertNever(action)
   }

@@ -5,6 +5,7 @@ import {
   createRectElement,
   createTextElement,
 } from '../../model/factories'
+import { MAX_ALT_LENGTH } from '../../model/limits'
 import type { SlideElement } from '../../model/types'
 import { PropertiesPanel, toHexColor } from './PropertiesPanel'
 
@@ -209,6 +210,12 @@ describe('PropertiesPanel : rectangle et image', () => {
 
     expect(onUpdate).toHaveBeenCalledWith({ alt: 'Mon logo' })
     expect(onSeal).toHaveBeenCalledTimes(1)
+  })
+
+  it("limite le texte alternatif à la longueur acceptée par l'import de fichier", () => {
+    setup(createImageElement('data:,a'))
+
+    expect(screen.getByLabelText('Texte alternatif')).toHaveAttribute('maxlength', String(MAX_ALT_LENGTH))
   })
 
   it('n\'affiche pas les champs d\'un autre type', () => {

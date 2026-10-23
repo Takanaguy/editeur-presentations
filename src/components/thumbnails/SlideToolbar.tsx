@@ -1,6 +1,9 @@
 import type { ReactNode } from 'react'
+import { MAX_SLIDES } from '../../model/limits'
 
 interface SlideToolbarProps {
+  // Faux quand la limite de diapositives est atteinte : ajouter et dupliquer sont désactivés.
+  canAddSlide: boolean
   canDelete: boolean
   canMoveUp: boolean
   canMoveDown: boolean
@@ -13,6 +16,8 @@ interface SlideToolbarProps {
 
 interface IconButtonProps {
   label: string
+  // Infobulle : par défaut le libellé ; remplacée par une explication quand c'est utile.
+  title?: string
   disabled?: boolean
   onClick: () => void
   // Classes de survol propres au bouton (la suppression passe en rouge).
@@ -23,6 +28,7 @@ interface IconButtonProps {
 // Bouton carré avec une icône : le nom accessible vient de l'aria-label, pas de l'icône.
 function IconButton({
   label,
+  title = label,
   disabled = false,
   onClick,
   hoverClass = 'enabled:hover:bg-slate-100 enabled:hover:text-slate-900',
@@ -32,7 +38,7 @@ function IconButton({
     <button
       type="button"
       aria-label={label}
-      title={label}
+      title={title}
       disabled={disabled}
       onClick={onClick}
       className={`flex h-8 flex-1 cursor-pointer items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300 ${hoverClass}`}
@@ -54,8 +60,11 @@ function IconButton({
   )
 }
 
+const LIMIT_MESSAGE = `Limite de ${MAX_SLIDES} diapositives atteinte.`
+
 // Présentationnel : il ne sait pas ce que font les actions, il les relaie.
 export function SlideToolbar({
+  canAddSlide,
   canDelete,
   canMoveUp,
   canMoveDown,
@@ -73,8 +82,10 @@ export function SlideToolbar({
     >
       <button
         type="button"
+        disabled={!canAddSlide}
+        title={canAddSlide ? undefined : LIMIT_MESSAGE}
         onClick={onAdd}
-        className="flex h-8 w-full cursor-pointer items-center justify-center gap-1.5 rounded-md bg-blue-600 px-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+        className="flex h-8 w-full cursor-pointer items-center justify-center gap-1.5 rounded-md bg-blue-600 px-2 text-sm font-medium text-white enabled:hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:bg-slate-300"
       >
         <span aria-hidden="true" className="text-base leading-none">
           +
@@ -82,7 +93,12 @@ export function SlideToolbar({
         Nouvelle diapositive
       </button>
       <div className="flex gap-1">
-        <IconButton label="Dupliquer la diapositive" onClick={onDuplicate}>
+        <IconButton
+          label="Dupliquer la diapositive"
+          title={canAddSlide ? undefined : LIMIT_MESSAGE}
+          disabled={!canAddSlide}
+          onClick={onDuplicate}
+        >
           <rect x="9" y="9" width="11" height="11" rx="2" />
           <path d="M5 15V6a2 2 0 0 1 2-2h9" />
         </IconButton>

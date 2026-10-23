@@ -1,6 +1,7 @@
 import { useId, useState, type ReactNode } from 'react'
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from '../../editor/elementOps'
 import type { ElementChanges, ReorderTarget } from '../../editor/types'
+import { MAX_ALT_LENGTH } from '../../model/limits'
 import type {
   ElementType,
   ImageElement,
@@ -407,6 +408,7 @@ function ImageFields({ element, onUpdate, onSeal }: FieldsProps<ImageElement>) {
         id={altId}
         type="text"
         value={element.alt}
+        maxLength={MAX_ALT_LENGTH}
         onChange={(event) => onUpdate({ alt: event.target.value })}
         onBlur={onSeal}
         className={INPUT_CLASS}

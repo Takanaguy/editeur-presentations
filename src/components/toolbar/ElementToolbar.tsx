@@ -1,4 +1,5 @@
 import { useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react'
+import { ELEMENT_LIMIT_MESSAGE } from '../../editor/addLimits'
 import { isValidImageUrl } from '../../io/imageUrl'
 
 interface ElementToolbarProps {
@@ -8,15 +9,21 @@ interface ElementToolbarProps {
   onAddImageFromFile: (file: File) => void
   onDelete: () => void
   onDuplicate: () => void
+  // Faux quand la diapositive a atteint sa limite d'éléments : tous les ajouts et la
+  // duplication sont désactivés.
+  canAddElement: boolean
   // Vrai quand un élément est sélectionné : commande Dupliquer et Supprimer.
   canDelete: boolean
   // Erreur venant du parent (import d'image échoué).
   error: string | null
 }
 
+// Une adresse http ordinaire tient largement ; les images lourdes passent par « Image (fichier) ».
+const MAX_URL_LENGTH = 8192
+
 const BASE_CLASS =
   'flex h-8 cursor-pointer items-center rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300'
-const BUTTON_CLASS = `${BASE_CLASS} hover:bg-slate-100 hover:text-slate-900`
+const BUTTON_CLASS = `${BASE_CLASS} enabled:hover:bg-slate-100 enabled:hover:text-slate-900`
 // Dupliquer ouvre le groupe d'actions sur l'élément, repoussé à droite (Supprimer le suit).
 // Le survol ne s'applique que quand le bouton est actif.
 const DUPLICATE_CLASS = `${BASE_CLASS} ml-auto enabled:hover:bg-slate-100 enabled:hover:text-slate-900`
@@ -31,6 +38,7 @@ export function ElementToolbar({
   onAddImageFromFile,
   onDelete,
   onDuplicate,
+  canAddElement,
   canDelete,
   error,
 }: ElementToolbarProps) {
@@ -71,7 +79,13 @@ export function ElementToolbar({
     input.value = ''
   }
 
+  // Limite atteinte pendant que le formulaire est ouvert : on le ferme. Ajustement de l'état
+  // pendant le rendu (pas d'effet), sans boucle : closeUrlForm remet urlFormOpen à false.
+  if (!canAddElement && urlFormOpen) closeUrlForm()
+
   const message = urlError ?? error
+  // Infobulle des boutons d'ajout : seulement quand la limite explique qu'ils sont éteints.
+  const limitTitle = canAddElement ? undefined : ELEMENT_LIMIT_MESSAGE
 
   return (
     <div
@@ -79,10 +93,22 @@ export function ElementToolbar({
       aria-label="Ajouter des éléments"
       className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-2"
     >
-      <button type="button" className={BUTTON_CLASS} onClick={onAddText}>
+      <button
+        type="button"
+        className={BUTTON_CLASS}
+        disabled={!canAddElement}
+        title={limitTitle}
+        onClick={onAddText}
+      >
         Texte
       </button>
-      <button type="button" className={BUTTON_CLASS} onClick={onAddRect}>
+      <button
+        type="button"
+        className={BUTTON_CLASS}
+        disabled={!canAddElement}
+        title={limitTitle}
+        onClick={onAddRect}
+      >
         Rectangle
       </button>
       <button
@@ -90,11 +116,19 @@ export function ElementToolbar({
         type="button"
         className={BUTTON_CLASS}
         aria-expanded={urlFormOpen}
+        disabled={!canAddElement}
+        title={limitTitle}
         onClick={() => (urlFormOpen ? closeUrlForm() : setUrlFormOpen(true))}
       >
         Image (URL)
       </button>
-      <button type="button" className={BUTTON_CLASS} onClick={() => fileInputRef.current?.click()}>
+      <button
+        type="button"
+        className={BUTTON_CLASS}
+        disabled={!canAddElement}
+        title={limitTitle}
+        onClick={() => fileInputRef.current?.click()}
+      >
         Image (fichier)
       </button>
       <input
@@ -113,6 +147,7 @@ export function ElementToolbar({
             autoFocus
             aria-label="Adresse de l'image"
             placeholder="https://..."
+            maxLength={MAX_URL_LENGTH}
             value={url}
             onChange={(event) => {
               setUrl(event.target.value)
@@ -131,9 +166,9 @@ export function ElementToolbar({
 
       <button
         type="button"
-        disabled={!canDelete}
+        disabled={!canDelete || !canAddElement}
         onClick={onDuplicate}
-        title="Dupliquer l'élément (Ctrl+D)"
+        title={limitTitle ?? "Dupliquer l'élément (Ctrl+D)"}
         className={DUPLICATE_CLASS}
       >
         Dupliquer l&apos;élément

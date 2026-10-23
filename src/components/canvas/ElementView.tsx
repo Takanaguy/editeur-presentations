@@ -72,6 +72,8 @@ export function ElementView({ element, onPointerDown, onDoubleClick }: ElementVi
           src={element.src}
           alt={element.alt}
           draggable={false}
+          // L'adresse de la page n'est pas envoyée au serveur qui héberge l'image.
+          referrerPolicy="no-referrer"
           onPointerDown={onPointerDown}
           style={{ ...box, objectFit: 'contain', userSelect: 'none' }}
         />

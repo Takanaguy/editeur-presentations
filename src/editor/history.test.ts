@@ -812,3 +812,62 @@ describe('immuabilité', () => {
     expect(frozen).toEqual(snapshot)
   })
 })
+
+describe('import et renommage et historique', () => {
+  function makeLoaded(): Presentation {
+    return { version: 1, title: 'Importée', slides: [createSlide(), createSlide()] }
+  }
+
+  it('load crée UNE entrée, undo restaure l\'ancienne présentation, redo la remet', () => {
+    const { history, state, text } = makeHistory()
+    const selected = run(history, { type: 'element/select', elementId: text.id })
+    const loaded = makeLoaded()
+
+    const after = run(selected, { type: 'presentation/load', presentation: loaded })
+    expect(after.past).toHaveLength(1)
+    expect(after.future).toEqual([])
+    expect(after.editor.presentation).toBe(loaded)
+    expect(after.editor.selectedSlideId).toBe(loaded.slides[0]?.id)
+    expect(after.editor.selectedElementId).toBeNull()
+
+    const undone = run(after, UNDO)
+    expect(undone.editor.presentation).toBe(state.presentation)
+    // La sélection pointait une diapositive de la présentation importée : elle se répare.
+    expect(undone.editor.presentation.slides.map((s) => s.id)).toContain(undone.editor.selectedSlideId)
+    expect(undone.editor.selectedElementId).toBeNull()
+    expect(canRedo(undone)).toBe(true)
+
+    const redone = run(undone, REDO)
+    expect(redone.editor.presentation).toBe(loaded)
+    expect(redone.editor.selectedSlideId).toBe(loaded.slides[0]?.id)
+    expect(redone.past).toHaveLength(1)
+  })
+
+  it('load de la même présentation ou d\'une présentation vide ne crée pas d\'entrée', () => {
+    const { history } = makeHistory()
+    expect(run(history, { type: 'presentation/load', presentation: history.editor.presentation })).toBe(history)
+    const empty: Presentation = { version: 1, title: 'Vide', slides: [] }
+    expect(run(history, { type: 'presentation/load', presentation: empty })).toBe(history)
+  })
+
+  it('load efface les redo possibles', () => {
+    const { history } = makeHistory()
+    const undone = run(history, { type: 'slide/add' }, UNDO)
+    expect(canRedo(undone)).toBe(true)
+    const after = run(undone, { type: 'presentation/load', presentation: makeLoaded() })
+    expect(canRedo(after)).toBe(false)
+  })
+
+  it('rename crée une entrée, undo restaure le titre, un titre identique n\'en crée pas', () => {
+    const { history } = makeHistory()
+    const renamed = run(history, { type: 'presentation/rename', title: 'Nouveau' })
+    expect(renamed.past).toHaveLength(1)
+    expect(renamed.editor.presentation.title).toBe('Nouveau')
+
+    const same = run(renamed, { type: 'presentation/rename', title: 'Nouveau' })
+    expect(same).toBe(renamed)
+
+    const undone = run(renamed, UNDO)
+    expect(undone.editor.presentation.title).toBe(history.editor.presentation.title)
+  })
+})

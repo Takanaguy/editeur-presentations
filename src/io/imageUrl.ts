@@ -1,3 +1,5 @@
+import { MAX_ALT_LENGTH } from '../model/limits'
+
 // Accepte seulement ce qu'une balise <img> peut afficher sans risque :
 // http(s) bien formé, ou une image encodée en data URL.
 // Refuse javascript:, file:, le vide et le texte libre.
@@ -24,11 +26,12 @@ export function altFromImageUrl(value: string): string {
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return fallback
     const last = url.pathname.split('/').filter(Boolean).pop()
     if (!last) return fallback
+    // Tronqué à la limite du texte alternatif, sinon l'export serait refusé à l'import.
     try {
-      return decodeURIComponent(last) || fallback
+      return decodeURIComponent(last).slice(0, MAX_ALT_LENGTH) || fallback
     } catch {
       // Séquence % mal formée : on garde le segment tel quel.
-      return last
+      return last.slice(0, MAX_ALT_LENGTH)
     }
   } catch {
     return fallback

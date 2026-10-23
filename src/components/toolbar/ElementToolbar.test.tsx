@@ -11,7 +11,15 @@ function renderToolbar(overrides: Partial<Parameters<typeof ElementToolbar>[0]> 
     onDelete: vi.fn(),
     onDuplicate: vi.fn(),
   }
-  render(<ElementToolbar canDelete={true} error={null} {...handlers} {...overrides} />)
+  render(
+    <ElementToolbar
+      canAddElement={true}
+      canDelete={true}
+      error={null}
+      {...handlers}
+      {...overrides}
+    />,
+  )
   return handlers
 }
 
@@ -186,5 +194,63 @@ describe('ElementToolbar', () => {
     renderToolbar()
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it("à la limite d'éléments, désactive tous les ajouts et la duplication avec une infobulle", async () => {
+    const h = renderToolbar({ canAddElement: false })
+
+    const names = ['Texte', 'Rectangle', 'Image (URL)', 'Image (fichier)', "Dupliquer l'élément"]
+    for (const name of names) {
+      const button = screen.getByRole('button', { name })
+      expect(button).toBeDisabled()
+      expect(button).toHaveAttribute('title', 'Limite de 500 éléments par diapositive atteinte.')
+      await userEvent.click(button)
+    }
+    expect(h.onAddText).not.toHaveBeenCalled()
+    expect(h.onAddRect).not.toHaveBeenCalled()
+    expect(h.onDuplicate).not.toHaveBeenCalled()
+    // Supprimer reste possible : c'est ce qui permet de repasser sous la limite.
+    expect(screen.getByRole('button', { name: "Supprimer l'élément" })).toBeEnabled()
+  })
+
+  it("sous la limite, Dupliquer garde l'infobulle du raccourci", () => {
+    renderToolbar()
+
+    expect(screen.getByRole('button', { name: "Dupliquer l'élément" })).toHaveAttribute(
+      'title',
+      "Dupliquer l'élément (Ctrl+D)",
+    )
+  })
+
+  it("limite la longueur de l'adresse d'image saisie à 8192 caractères", async () => {
+    renderToolbar()
+    await openUrlForm()
+
+    expect(urlField()).toHaveAttribute('maxlength', '8192')
+  })
+
+  it("ferme le formulaire d'adresse quand la limite d'éléments est atteinte", async () => {
+    const props = {
+      onAddText: vi.fn(),
+      onAddRect: vi.fn(),
+      onAddImageFromUrl: vi.fn(),
+      onAddImageFromFile: vi.fn(),
+      onDelete: vi.fn(),
+      onDuplicate: vi.fn(),
+      canDelete: true,
+      error: null,
+    }
+    const { rerender } = render(<ElementToolbar canAddElement={true} {...props} />)
+    await openUrlForm()
+    await userEvent.type(urlField(), 'https://exemple.fr/a.png')
+    expect(queryUrlField()).toBeInTheDocument()
+
+    rerender(<ElementToolbar canAddElement={false} {...props} />)
+
+    expect(queryUrlField()).not.toBeInTheDocument()
+    // Rouvert plus tard, le formulaire repart vide.
+    rerender(<ElementToolbar canAddElement={true} {...props} />)
+    await openUrlForm()
+    expect(urlField()).toHaveValue('')
   })
 })
