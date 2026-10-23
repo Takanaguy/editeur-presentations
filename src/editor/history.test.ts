@@ -758,6 +758,35 @@ describe('réordonnancement et historique', () => {
   })
 })
 
+describe('duplication et historique', () => {
+  it('crée une entrée, et undo supprime la copie avec une sélection cohérente', () => {
+    const { history, rect } = makeHistory()
+    const selected = run(history, { type: 'element/select', elementId: rect.id })
+
+    const duplicated = run(selected, { type: 'element/duplicate', elementId: rect.id })
+    expect(duplicated.past).toHaveLength(1)
+    expect(selectedElementsOf(duplicated.editor)).toHaveLength(4)
+    const copyId = duplicated.editor.selectedElementId
+    expect(copyId).not.toBe(rect.id)
+
+    const undone = run(duplicated, UNDO)
+    expect(selectedElementsOf(undone.editor)).toHaveLength(3)
+    expect(selectedElementsOf(undone.editor).some((e) => e.id === copyId)).toBe(false)
+    // La copie n'existe plus : rien n'est sélectionné plutôt qu'un id fantôme.
+    expect(undone.editor.selectedElementId).toBeNull()
+    expect(undone.editor.presentation).toBe(selected.editor.presentation)
+
+    const redone = run(undone, REDO)
+    expect(selectedElementsOf(redone.editor).at(-1)?.id).toBe(copyId)
+  })
+
+  it('un id inconnu ne crée pas d\'entrée', () => {
+    const { history } = makeHistory()
+    const same = run(history, { type: 'element/duplicate', elementId: 'inconnu' })
+    expect(same).toBe(history)
+  })
+})
+
 describe('immuabilité', () => {
   it('ne modifie jamais un état gelé en profondeur', () => {
     const { history, text, rect, second } = makeHistory()

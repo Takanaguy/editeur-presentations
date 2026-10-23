@@ -277,6 +277,10 @@ describe('aiguillage des actions d\'éléments', () => {
     const afterUpdate = editorReducer(state, { type: 'element/update', elementId: text.id, changes })
     expect(elementById(afterUpdate, text.id)).toMatchObject(changes)
 
+    const afterDuplicate = editorReducer(state, { type: 'element/duplicate', elementId: text.id })
+    expect(selectedElements(afterDuplicate)).toHaveLength(selectedElements(state).length + 1)
+    expect(afterDuplicate.selectedElementId).toBe(selectedElements(afterDuplicate).at(-1)?.id)
+
     const afterReorder = editorReducer(state, { type: 'element/reorder', elementId: text.id, to: 'front' })
     expect(selectedElements(afterReorder).at(-1)?.id).toBe(text.id)
   })
@@ -284,6 +288,7 @@ describe('aiguillage des actions d\'éléments', () => {
   it('retourne le même état pour une action d\'élément sans effet', () => {
     const { state } = makeElementState()
     expect(editorReducer(state, { type: 'element/delete', elementId: 'inconnu' })).toBe(state)
+    expect(editorReducer(state, { type: 'element/duplicate', elementId: 'inconnu' })).toBe(state)
     expect(editorReducer(state, { type: 'element/select', elementId: null })).toBe(state)
     const last = selectedElements(state).at(-1)
     expect(editorReducer(state, { type: 'element/reorder', elementId: last?.id ?? '', to: 'front' })).toBe(state)
@@ -298,6 +303,7 @@ describe('aiguillage des actions d\'éléments', () => {
       editorReducer(frozen, { type: 'element/add', element: createTextElement() })
       editorReducer(frozen, { type: 'element/select', elementId: text.id })
       editorReducer(frozen, { type: 'element/delete', elementId: rect.id })
+      editorReducer(frozen, { type: 'element/duplicate', elementId: rect.id })
       editorReducer(frozen, { type: 'element/move', elementId: image.id, x: 3, y: 4 })
       editorReducer(frozen, {
         type: 'element/resize',

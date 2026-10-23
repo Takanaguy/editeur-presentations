@@ -7,6 +7,8 @@ interface ElementToolbarProps {
   onAddImageFromUrl: (url: string) => void
   onAddImageFromFile: (file: File) => void
   onDelete: () => void
+  onDuplicate: () => void
+  // Vrai quand un élément est sélectionné : commande Dupliquer et Supprimer.
   canDelete: boolean
   // Erreur venant du parent (import d'image échoué).
   error: string | null
@@ -15,8 +17,11 @@ interface ElementToolbarProps {
 const BASE_CLASS =
   'flex h-8 cursor-pointer items-center rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300'
 const BUTTON_CLASS = `${BASE_CLASS} hover:bg-slate-100 hover:text-slate-900`
+// Dupliquer ouvre le groupe d'actions sur l'élément, repoussé à droite (Supprimer le suit).
+// Le survol ne s'applique que quand le bouton est actif.
+const DUPLICATE_CLASS = `${BASE_CLASS} ml-auto enabled:hover:bg-slate-100 enabled:hover:text-slate-900`
 // La suppression passe en rouge au survol, seulement quand elle est active.
-const DELETE_CLASS = `${BASE_CLASS} ml-auto enabled:hover:border-red-200 enabled:hover:bg-red-50 enabled:hover:text-red-600`
+const DELETE_CLASS = `${BASE_CLASS} enabled:hover:border-red-200 enabled:hover:bg-red-50 enabled:hover:text-red-600`
 
 // Présentationnel : valide seulement la forme de l'URL saisie, le reste est relayé au parent.
 export function ElementToolbar({
@@ -25,6 +30,7 @@ export function ElementToolbar({
   onAddImageFromUrl,
   onAddImageFromFile,
   onDelete,
+  onDuplicate,
   canDelete,
   error,
 }: ElementToolbarProps) {
@@ -123,6 +129,15 @@ export function ElementToolbar({
         </form>
       )}
 
+      <button
+        type="button"
+        disabled={!canDelete}
+        onClick={onDuplicate}
+        title="Dupliquer l'élément (Ctrl+D)"
+        className={DUPLICATE_CLASS}
+      >
+        Dupliquer l&apos;élément
+      </button>
       <button
         type="button"
         disabled={!canDelete}

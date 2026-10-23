@@ -75,6 +75,22 @@ export function EditorLayout() {
     if (element) dispatch({ type: 'element/delete', elementId: element.id })
   }
 
+  function duplicateSelection() {
+    if (element) dispatch({ type: 'element/duplicate', elementId: element.id })
+  }
+
+  // Flèches : position calculée depuis l'élément actuel (le hook relit la dernière valeur à
+  // chaque touche). Une rafale ou un maintien de touche = une seule entrée d'historique ;
+  // au bord de la diapositive le reducer borne et ne crée rien si rien ne bouge.
+  function nudgeSelection(dx: number, dy: number) {
+    if (!element) return
+    dispatch({
+      type: 'history/coalesced',
+      key: `nudge:${element.id}`,
+      action: { type: 'element/move', elementId: element.id, x: element.x + dx, y: element.y + dy },
+    })
+  }
+
   function undo() {
     dispatch({ type: 'history/undo' })
   }
@@ -88,6 +104,10 @@ export function EditorLayout() {
     onDeleteSelection: deleteSelection,
     onUndo: undo,
     onRedo: redo,
+    onDuplicate: duplicateSelection,
+    onNudge: nudgeSelection,
+    // Au relâchement, l'appui suivant formera une nouvelle entrée d'historique.
+    onNudgeEnd: () => dispatch({ type: 'history/seal' }),
     // Pendant la présentation, Suppr, Retour arrière et Ctrl+Z ne doivent rien toucher.
     enabled: !presenting,
   })
@@ -192,6 +212,7 @@ export function EditorLayout() {
               onAddImageFromUrl={(url) => void addImage(() => Promise.resolve(url), altFromImageUrl(url))}
               onAddImageFromFile={(file) => void addImage(() => readImageFile(file), file.name)}
               onDelete={deleteSelection}
+              onDuplicate={duplicateSelection}
             />
             <SlideCanvas
               slide={slide}

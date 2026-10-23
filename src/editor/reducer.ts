@@ -1,6 +1,7 @@
 import {
   addElement,
   deleteElement,
+  duplicateElement,
   moveElement,
   reorderElement,
   resizeElement,
@@ -29,6 +30,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return selectElement(state, action.elementId)
     case 'element/delete':
       return deleteElement(state, action.elementId)
+    case 'element/duplicate':
+      return duplicateElement(state, action.elementId)
     case 'element/move':
       return moveElement(state, action.elementId, action.x, action.y)
     case 'element/resize':

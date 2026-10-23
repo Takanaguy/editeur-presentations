@@ -5,6 +5,7 @@ import {
   MIN_FONT_SIZE,
   addElement,
   deleteElement,
+  duplicateElement,
   moveElement,
   reorderElement,
   resizeElement,
@@ -595,6 +596,119 @@ describe('reorderElement', () => {
     const snapshot = structuredClone(frozen)
     expect(() => reorderElement(frozen, text.id, 'front')).not.toThrow()
     expect(frozen).toEqual(snapshot)
+  })
+})
+
+describe('duplicateElement', () => {
+  const idsOf = (state: EditorState) => selectedElements(state).map((e) => e.id)
+
+  it('crée une copie avec un nouvel id et le même contenu, hors id et position', () => {
+    const { state, text } = makeElementState()
+    const next = duplicateElement(state, text.id)
+    const copy = selectedElements(next).at(-1)
+    expect(copy).toBeDefined()
+    expect(copy?.id).not.toBe(text.id)
+    expect(copy).toEqual({ ...text, id: copy?.id, x: text.x + 20, y: text.y + 20 })
+  })
+
+  it('décale la copie de +20 en x et en y', () => {
+    const { state, rect } = makeElementState()
+    const copy = selectedElements(duplicateElement(state, rect.id)).at(-1)
+    expect(copy).toMatchObject({ x: rect.x + 20, y: rect.y + 20, width: rect.width, height: rect.height })
+  })
+
+  it('borne la copie pour qu\'elle reste dans la diapositive', () => {
+    const { state } = makeElementState()
+    const edge = createRectElement({
+      x: SLIDE_WIDTH - 100,
+      y: SLIDE_HEIGHT - 50,
+      width: 100,
+      height: 50,
+    })
+    const withEdge = addElement(state, edge)
+    const copy = selectedElements(duplicateElement(withEdge, edge.id)).at(-1)
+    expect(copy).toMatchObject({ x: SLIDE_WIDTH - 100, y: SLIDE_HEIGHT - 50 })
+  })
+
+  it('borne un seul axe quand l\'autre a la place de se décaler', () => {
+    const { state } = makeElementState()
+    const edge = createRectElement({ x: SLIDE_WIDTH - 100, y: 10, width: 100, height: 50 })
+    const copy = selectedElements(duplicateElement(addElement(state, edge), edge.id)).at(-1)
+    expect(copy).toMatchObject({ x: SLIDE_WIDTH - 100, y: 30 })
+  })
+
+  it('ajoute la copie en dernier (premier plan), sans toucher à l\'ordre des autres', () => {
+    const { state, text, rect, image } = makeElementState()
+    const next = duplicateElement(state, text.id)
+    expect(idsOf(next).slice(0, 3)).toEqual([text.id, rect.id, image.id])
+    expect(idsOf(next)).toHaveLength(4)
+  })
+
+  it('sélectionne la copie', () => {
+    const { state, rect } = makeElementState()
+    const next = duplicateElement({ ...state, selectedElementId: rect.id }, rect.id)
+    expect(next.selectedElementId).toBe(selectedElements(next).at(-1)?.id)
+    expect(next.selectedElementId).not.toBe(rect.id)
+    expect(next.selectedSlideId).toBe(state.selectedSlideId)
+  })
+
+  it('laisse l\'original intact (même référence, même position)', () => {
+    const { state, rect } = makeElementState()
+    const next = duplicateElement(state, rect.id)
+    expect(elementById(next, rect.id)).toBe(rect)
+  })
+
+  it('duplique aussi un élément qui n\'est pas sélectionné', () => {
+    const { state, image } = makeElementState()
+    expect(state.selectedElementId).toBeNull()
+    expect(selectedElements(duplicateElement(state, image.id))).toHaveLength(4)
+  })
+
+  it('retourne le même state pour un id inconnu', () => {
+    const { state } = makeElementState()
+    expect(duplicateElement(state, 'inconnu')).toBe(state)
+  })
+
+  it('retourne le même state pour un id d\'une autre diapositive', () => {
+    const { state, other } = makeElementState()
+    expect(duplicateElement(state, other.id)).toBe(state)
+  })
+
+  it('retourne le même state si la diapositive sélectionnée n\'existe pas', () => {
+    const { state, text } = makeElementState()
+    const broken: EditorState = { ...state, selectedSlideId: 'fantôme' }
+    expect(duplicateElement(broken, text.id)).toBe(broken)
+  })
+
+  it('garde la référence des autres diapositives', () => {
+    const { state, second, rect } = makeElementState()
+    const next = duplicateElement(state, rect.id)
+    expectSlideUntouched(state, next, 1)
+    expect(next.presentation.slides[1]).toBe(second)
+    expect(next.presentation.slides[0]).not.toBe(state.presentation.slides[0])
+  })
+
+  it('vise la diapositive sélectionnée (la seconde ici)', () => {
+    const { state, first, second, other } = makeElementState()
+    const onSecond: EditorState = { ...state, selectedSlideId: second.id }
+    const next = duplicateElement(onSecond, other.id)
+    expect(next.presentation.slides[0]).toBe(first)
+    expect(selectedElements(next)).toHaveLength(2)
+  })
+
+  it('ne modifie jamais l\'état d\'origine, gelé en profondeur', () => {
+    const { state, rect } = makeElementState()
+    const frozen = deepFreeze({ ...state, selectedElementId: rect.id })
+    const snapshot = structuredClone(frozen)
+    expect(() => duplicateElement(frozen, rect.id)).not.toThrow()
+    expect(frozen).toEqual(snapshot)
+  })
+
+  it('deux copies de suite ont des ids différents', () => {
+    const { state, rect } = makeElementState()
+    const once = duplicateElement(state, rect.id)
+    const twice = duplicateElement(once, rect.id)
+    expect(new Set(idsOf(twice)).size).toBe(5)
   })
 })
 

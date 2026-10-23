@@ -45,6 +45,8 @@ export type ElementAction =
   | { type: 'element/add'; element: SlideElement }
   | { type: 'element/select'; elementId: string | null }
   | { type: 'element/delete'; elementId: string }
+  // Copie décalée de 20 unités, ajoutée au premier plan et sélectionnée.
+  | { type: 'element/duplicate'; elementId: string }
   | { type: 'element/move'; elementId: string; x: number; y: number }
   // Applique x, y, width et height d'un coup : une poignée en haut à gauche change aussi x et y.
   // Le reducer applique les bounds telles quelles (seulement bornées) : c'est à l'appelant

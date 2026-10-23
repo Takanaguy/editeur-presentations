@@ -1,3 +1,4 @@
+import { createId } from '../model/ids'
 import type { Slide, SlideElement, TextAlign } from '../model/types'
 import { clamp, clampBounds, type Bounds } from './geometry'
 import type { EditorState, ElementChanges, ReorderTarget } from './types'
@@ -7,6 +8,8 @@ import type { EditorState, ElementChanges, ReorderTarget } from './types'
 
 export const MIN_FONT_SIZE = 8
 export const MAX_FONT_SIZE = 400
+// Décalage de la copie par rapport à l'original (unités logiques), pour qu'on la distingue.
+export const DUPLICATE_OFFSET = 20
 
 // Ces champs ne se modifient pas par `element/update` (voir ProtectedElementKey).
 const PROTECTED_KEYS: ReadonlySet<string> = new Set(['id', 'type', 'x', 'y', 'width', 'height'])
@@ -79,6 +82,30 @@ export function addElement(state: EditorState, element: SlideElement): EditorSta
     presentation: withElements(state, [...slide.elements, added]),
     selectedSlideId: state.selectedSlideId,
     selectedElementId: added.id,
+  }
+}
+
+// Copie l'élément avec un nouvel id, décalée puis bornée, au premier plan et sélectionnée.
+// Id inconnu : même state. L'original n'est pas touché.
+export function duplicateElement(state: EditorState, elementId: string): EditorState {
+  const slide = findSelectedSlide(state)
+  const original = slide?.elements.find((e) => e.id === elementId)
+  if (!slide || !original) return state
+
+  const copy: SlideElement = {
+    ...original,
+    ...clampBounds({
+      x: original.x + DUPLICATE_OFFSET,
+      y: original.y + DUPLICATE_OFFSET,
+      width: original.width,
+      height: original.height,
+    }),
+    id: createId(),
+  }
+  return {
+    presentation: withElements(state, [...slide.elements, copy]),
+    selectedSlideId: state.selectedSlideId,
+    selectedElementId: copy.id,
   }
 }
 

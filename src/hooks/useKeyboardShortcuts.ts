@@ -28,16 +28,44 @@ export function isTextEntryTarget(target: EventTarget | null): boolean {
   return attribute !== null && attribute !== 'false'
 }
 
+// Vrai si la cible utilise déjà les flèches (curseur, liste, champ de saisie) : le
+// déplacement de l'élément doit alors lui laisser la touche. Les boutons et le body non.
+export function isArrowKeyTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  // input (tous types, dont range), select, textarea et contentEditable : déjà couverts.
+  if (isTypingTarget(target)) return true
+  return target.getAttribute('role') === 'slider'
+}
+
+// Direction (en unités de pas) de chaque flèche.
+// Une Map et pas un objet : une touche nommée « constructor » ne doit pas y être trouvée.
+const ARROW_DIRECTIONS: ReadonlyMap<string, readonly [number, number]> = new Map([
+  ['ArrowLeft', [-1, 0]],
+  ['ArrowRight', [1, 0]],
+  ['ArrowUp', [0, -1]],
+  ['ArrowDown', [0, 1]],
+])
+
+// Pas d'une flèche, en unités logiques ; Maj le décuple.
+const NUDGE_STEP = 1
+const NUDGE_STEP_SHIFT = 10
+
 export interface KeyboardShortcuts {
   hasSelection: boolean
   onDeleteSelection: () => void
   onUndo?: () => void
   onRedo?: () => void
+  // Ctrl/Cmd+D : duplique l'élément sélectionné.
+  onDuplicate?: () => void
+  // Flèches : déplacement de l'élément sélectionné de (dx, dy) unités logiques.
+  onNudge?: (dx: number, dy: number) => void
+  // Relâchement d'une flèche : la rafale de déplacements est finie.
+  onNudgeEnd?: () => void
   // Faux : tous les raccourcis sont suspendus (mode présentation). Vrai par défaut.
   enabled?: boolean
 }
 
-// Écoute le clavier sur la fenêtre : suppression, annuler et rétablir.
+// Écoute le clavier sur la fenêtre : suppression, annuler, rétablir, dupliquer et flèches.
 export function useKeyboardShortcuts(shortcuts: KeyboardShortcuts) {
   // Le listener lit toujours les dernières valeurs sans être réinstallé à chaque rendu.
   const latest = useRef(shortcuts)
@@ -62,10 +90,43 @@ export function useKeyboardShortcuts(shortcuts: KeyboardShortcuts) {
       return true
     }
 
+    // Ctrl/Cmd+D duplique. Sans Maj ni Alt, avec une sélection, hors champ de texte.
+    // preventDefault seulement si on agit : sinon on volerait « ajouter aux favoris » pour rien.
+    function handleDuplicateKey(event: KeyboardEvent): boolean {
+      if ((!event.ctrlKey && !event.metaKey) || event.altKey || event.shiftKey) return false
+      if (event.key.toLowerCase() !== 'd') return false
+      const { hasSelection, onDuplicate } = latest.current
+      if (!onDuplicate || !hasSelection || isTextEntryTarget(event.target)) return false
+
+      // Touche maintenue : on garde la main sur le raccourci (le navigateur ne doit pas
+      // ouvrir ses favoris) mais on ne crée pas une copie par répétition.
+      event.preventDefault()
+      if (!event.repeat) onDuplicate()
+      return true
+    }
+
+    // Flèches : déplacent l'élément sélectionné. Retourne true si la touche a été traitée.
+    // Les répétitions sont voulues : maintenir une flèche fait glisser l'élément.
+    function handleArrowKey(event: KeyboardEvent): boolean {
+      const direction = ARROW_DIRECTIONS.get(event.key)
+      if (!direction) return false
+      if (event.ctrlKey || event.altKey || event.metaKey) return false
+      const { hasSelection, onNudge } = latest.current
+      if (!onNudge || !hasSelection || isArrowKeyTarget(event.target)) return false
+
+      const step = event.shiftKey ? NUDGE_STEP_SHIFT : NUDGE_STEP
+      // preventDefault ici seulement : sinon la page ne défilerait plus au clavier pour rien.
+      event.preventDefault()
+      onNudge(direction[0] * step, direction[1] * step)
+      return true
+    }
+
     function handleKeyDown(event: KeyboardEvent) {
       // Lu à chaque touche : réactiver les raccourcis n'exige pas de réinstaller l'écouteur.
       if (latest.current.enabled === false) return
       if (handleHistoryKey(event)) return
+      if (handleDuplicateKey(event)) return
+      if (handleArrowKey(event)) return
       const { hasSelection, onDeleteSelection } = latest.current
       if (event.key !== 'Delete' && event.key !== 'Backspace') return
       // Ctrl, Alt ou Meta : une autre combinaison que la nôtre. repeat : touche maintenue,
@@ -78,7 +139,17 @@ export function useKeyboardShortcuts(shortcuts: KeyboardShortcuts) {
       onDeleteSelection()
     }
 
+    // Relâcher une flèche termine la rafale, même sans sélection ou en mode présentation :
+    // couper la chaîne de fusion est sans danger, et évite qu'un appui plus tardif s'y colle.
+    function handleKeyUp(event: KeyboardEvent) {
+      if (ARROW_DIRECTIONS.has(event.key)) latest.current.onNudgeEnd?.()
+    }
+
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+    }
   }, [])
 }

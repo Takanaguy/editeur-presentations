@@ -9,6 +9,7 @@ function renderToolbar(overrides: Partial<Parameters<typeof ElementToolbar>[0]> 
     onAddImageFromUrl: vi.fn(),
     onAddImageFromFile: vi.fn(),
     onDelete: vi.fn(),
+    onDuplicate: vi.fn(),
   }
   render(<ElementToolbar canDelete={true} error={null} {...handlers} {...overrides} />)
   return handlers
@@ -19,11 +20,18 @@ const queryUrlField = () => screen.queryByRole('textbox', { name: 'Adresse de l\
 const openUrlForm = () => userEvent.click(screen.getByRole('button', { name: 'Image (URL)' }))
 
 describe('ElementToolbar', () => {
-  it('est une barre d\'outils nommée avec ses cinq boutons', () => {
+  it('est une barre d\'outils nommée avec ses six boutons', () => {
     renderToolbar()
 
     expect(screen.getByRole('toolbar', { name: 'Ajouter des éléments' })).toBeInTheDocument()
-    const names = ['Texte', 'Rectangle', 'Image (URL)', 'Image (fichier)', 'Supprimer l\'élément']
+    const names = [
+      'Texte',
+      'Rectangle',
+      'Image (URL)',
+      'Image (fichier)',
+      'Dupliquer l\'élément',
+      'Supprimer l\'élément',
+    ]
     for (const name of names) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument()
     }
@@ -48,6 +56,24 @@ describe('ElementToolbar', () => {
     expect(del).toBeDisabled()
     await userEvent.click(del)
     expect(h.onDelete).not.toHaveBeenCalled()
+  })
+
+  it('appelle onDuplicate au clic sur Dupliquer l\'élément', async () => {
+    const h = renderToolbar()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Dupliquer l\'élément' }))
+
+    expect(h.onDuplicate).toHaveBeenCalledTimes(1)
+    expect(h.onDelete).not.toHaveBeenCalled()
+  })
+
+  it('désactive Dupliquer sans sélection', async () => {
+    const h = renderToolbar({ canDelete: false })
+    const duplicate = screen.getByRole('button', { name: 'Dupliquer l\'élément' })
+
+    expect(duplicate).toBeDisabled()
+    await userEvent.click(duplicate)
+    expect(h.onDuplicate).not.toHaveBeenCalled()
   })
 
   describe('formulaire d\'URL', () => {

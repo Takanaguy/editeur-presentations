@@ -1,6 +1,11 @@
 import { renderHook } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { isTextEntryTarget, isTypingTarget, useKeyboardShortcuts } from './useKeyboardShortcuts'
+import {
+  isArrowKeyTarget,
+  isTextEntryTarget,
+  isTypingTarget,
+  useKeyboardShortcuts,
+} from './useKeyboardShortcuts'
 
 function makeInput(type?: string) {
   const input = document.createElement('input')
@@ -410,6 +415,365 @@ describe('useKeyboardShortcuts : annuler et rétablir', () => {
 
     expect(onUndo).not.toHaveBeenCalled()
     expect(onRedo).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(false)
+  })
+})
+
+// Envoie un événement clavier annulable sur la cible (window par défaut).
+function fire(
+  init: KeyboardEventInit,
+  target: EventTarget = window,
+  type: 'keydown' | 'keyup' = 'keydown',
+) {
+  const event = new KeyboardEvent(type, { cancelable: true, bubbles: true, ...init })
+  target.dispatchEvent(event)
+  return event
+}
+
+describe('isArrowKeyTarget', () => {
+  function withRole(role: string) {
+    const element = document.createElement('div')
+    element.setAttribute('role', role)
+    return element
+  }
+  function editable(value: string) {
+    const element = document.createElement('div')
+    element.setAttribute('contenteditable', value)
+    return element
+  }
+
+  it.each([
+    ['input sans type', makeInput(), true],
+    ['input text', makeInput('text'), true],
+    ['input number', makeInput('number'), true],
+    ['input range', makeInput('range'), true],
+    ['input color', makeInput('color'), true],
+    ['input checkbox', makeInput('checkbox'), true],
+    ['select', document.createElement('select'), true],
+    ['textarea', document.createElement('textarea'), true],
+    ['contentEditable', editable('true'), true],
+    ['contenteditable vide', editable(''), true],
+    ['role slider', withRole('slider'), true],
+    ['contenteditable false', editable('false'), false],
+    ['role button', withRole('button'), false],
+    ['bouton', document.createElement('button'), false],
+    ['div', document.createElement('div'), false],
+    ['body', document.body, false],
+    ['null', null, false],
+    ['window', window, false],
+  ])('%s', (_name, target, expected) => {
+    expect(isArrowKeyTarget(target)).toBe(expected)
+  })
+})
+
+describe('useKeyboardShortcuts : dupliquer (Ctrl/Cmd+D)', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  function setup(overrides: { hasSelection?: boolean; enabled?: boolean } = {}) {
+    const onDuplicate = vi.fn()
+    renderHook(() =>
+      useKeyboardShortcuts({
+        hasSelection: true,
+        onDeleteSelection: vi.fn(),
+        onDuplicate,
+        ...overrides,
+      }),
+    )
+    return { onDuplicate }
+  }
+
+  it.each([
+    ['Ctrl+D', { key: 'd', ctrlKey: true }],
+    ['Cmd+D', { key: 'd', metaKey: true }],
+    ['Ctrl+D en majuscule', { key: 'D', ctrlKey: true }],
+  ])('%s duplique et bloque le navigateur', (_name, init) => {
+    const { onDuplicate } = setup()
+
+    const event = fire(init)
+
+    expect(onDuplicate).toHaveBeenCalledTimes(1)
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it.each([
+    ['D seul', { key: 'd' }],
+    ['Ctrl+Maj+D', { key: 'D', ctrlKey: true, shiftKey: true }],
+    ['Ctrl+Alt+D', { key: 'd', ctrlKey: true, altKey: true }],
+    ['Cmd+Alt+D', { key: 'd', metaKey: true, altKey: true }],
+    ['Ctrl+F', { key: 'f', ctrlKey: true }],
+  ])('%s ne déclenche rien et ne bloque pas le navigateur', (_name, init) => {
+    const { onDuplicate } = setup()
+
+    const event = fire(init)
+
+    expect(onDuplicate).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it.each([
+    ['un textarea', () => document.createElement('textarea')],
+    ['un input texte', () => makeInput('text')],
+  ])('est ignoré dans %s, sans bloquer le navigateur', (_name, make) => {
+    const { onDuplicate } = setup()
+    const field = make()
+    document.body.append(field)
+    field.focus()
+
+    const event = fire({ key: 'd', ctrlKey: true }, field)
+
+    expect(onDuplicate).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('est déclenché depuis un bouton et un input color', () => {
+    const { onDuplicate } = setup()
+    const button = document.createElement('button')
+    const color = makeInput('color')
+    document.body.append(button, color)
+
+    fire({ key: 'd', ctrlKey: true }, button)
+    fire({ key: 'd', ctrlKey: true }, color)
+
+    expect(onDuplicate).toHaveBeenCalledTimes(2)
+  })
+
+  it('est ignoré sans sélection, sans bloquer le navigateur', () => {
+    const { onDuplicate } = setup({ hasSelection: false })
+
+    const event = fire({ key: 'd', ctrlKey: true })
+
+    expect(onDuplicate).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('est ignoré avec enabled: false, sans bloquer le navigateur', () => {
+    const { onDuplicate } = setup({ enabled: false })
+
+    const event = fire({ key: 'd', ctrlKey: true })
+
+    expect(onDuplicate).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('est ignoré sans callback fourni', () => {
+    renderHook(() => useKeyboardShortcuts({ hasSelection: true, onDeleteSelection: vi.fn() }))
+
+    const event = fire({ key: 'd', ctrlKey: true })
+
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('une touche maintenue ne crée qu\'une copie', () => {
+    const { onDuplicate } = setup()
+
+    fire({ key: 'd', ctrlKey: true })
+    fire({ key: 'd', ctrlKey: true, repeat: true })
+    fire({ key: 'd', ctrlKey: true, repeat: true })
+
+    expect(onDuplicate).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('useKeyboardShortcuts : déplacer avec les flèches', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  function setup(overrides: { hasSelection?: boolean; enabled?: boolean } = {}) {
+    const onNudge = vi.fn()
+    const onNudgeEnd = vi.fn()
+    const view = renderHook(() =>
+      useKeyboardShortcuts({
+        hasSelection: true,
+        onDeleteSelection: vi.fn(),
+        onNudge,
+        onNudgeEnd,
+        ...overrides,
+      }),
+    )
+    return { onNudge, onNudgeEnd, ...view }
+  }
+
+  it.each([
+    ['ArrowLeft', -1, 0],
+    ['ArrowRight', 1, 0],
+    ['ArrowUp', 0, -1],
+    ['ArrowDown', 0, 1],
+  ])('%s déplace de 1 unité', (key, dx, dy) => {
+    const { onNudge } = setup()
+
+    const event = fire({ key })
+
+    expect(onNudge).toHaveBeenCalledTimes(1)
+    expect(onNudge).toHaveBeenCalledWith(dx, dy)
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it.each([
+    ['ArrowLeft', -10, 0],
+    ['ArrowRight', 10, 0],
+    ['ArrowUp', 0, -10],
+    ['ArrowDown', 0, 10],
+  ])('Maj+%s déplace de 10 unités', (key, dx, dy) => {
+    const { onNudge } = setup()
+
+    fire({ key, shiftKey: true })
+
+    expect(onNudge).toHaveBeenCalledTimes(1)
+    expect(onNudge).toHaveBeenCalledWith(dx, dy)
+  })
+
+  it.each([
+    ['Ctrl', { ctrlKey: true }],
+    ['Alt', { altKey: true }],
+    ['Meta', { metaKey: true }],
+  ])('est ignoré avec %s, sans bloquer le navigateur', (_name, modifier) => {
+    const { onNudge } = setup()
+
+    const event = fire({ key: 'ArrowRight', ...modifier })
+
+    expect(onNudge).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('ignore les autres touches', () => {
+    const { onNudge } = setup()
+
+    fire({ key: 'a' })
+    fire({ key: 'Home' })
+    fire({ key: 'constructor' })
+
+    expect(onNudge).not.toHaveBeenCalled()
+  })
+
+  it('est ignoré sans sélection, sans bloquer le navigateur', () => {
+    const { onNudge } = setup({ hasSelection: false })
+
+    const event = fire({ key: 'ArrowDown' })
+
+    expect(onNudge).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('est ignoré avec enabled: false, sans bloquer le navigateur', () => {
+    const { onNudge } = setup({ enabled: false })
+
+    const event = fire({ key: 'ArrowDown' })
+
+    expect(onNudge).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('est ignoré sans callback fourni', () => {
+    renderHook(() => useKeyboardShortcuts({ hasSelection: true, onDeleteSelection: vi.fn() }))
+
+    const event = fire({ key: 'ArrowDown' })
+
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it.each([
+    ['un input range', () => makeInput('range')],
+    ['un input texte', () => makeInput('text')],
+    ['un input nombre', () => makeInput('number')],
+    ['un input color', () => makeInput('color')],
+    ['un select', () => document.createElement('select')],
+    ['un textarea', () => document.createElement('textarea')],
+    [
+      'un élément role=slider',
+      () => {
+        const slider = document.createElement('div')
+        slider.setAttribute('role', 'slider')
+        return slider
+      },
+    ],
+    [
+      'un élément contentEditable',
+      () => {
+        const editable = document.createElement('div')
+        editable.setAttribute('contenteditable', 'true')
+        return editable
+      },
+    ],
+  ])('laisse les flèches à %s', (_name, make) => {
+    const { onNudge } = setup()
+    const control = make()
+    document.body.append(control)
+
+    const event = fire({ key: 'ArrowRight' }, control)
+
+    expect(onNudge).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it.each([
+    ['body', () => document.body],
+    ['un bouton', () => document.createElement('button')],
+  ])('se déclenche quand la cible est %s', (_name, make) => {
+    const { onNudge } = setup()
+    const target = make()
+    if (target !== document.body) document.body.append(target)
+
+    fire({ key: 'ArrowRight' }, target)
+
+    expect(onNudge).toHaveBeenCalledTimes(1)
+    expect(onNudge).toHaveBeenCalledWith(1, 0)
+  })
+
+  it('les répétitions de la touche sont autorisées', () => {
+    const { onNudge } = setup()
+
+    fire({ key: 'ArrowRight' })
+    fire({ key: 'ArrowRight', repeat: true })
+    fire({ key: 'ArrowRight', repeat: true })
+
+    expect(onNudge).toHaveBeenCalledTimes(3)
+  })
+
+  it('appelle onNudgeEnd au keyup d\'une flèche, même sans sélection', () => {
+    const { onNudgeEnd } = setup({ hasSelection: false })
+
+    fire({ key: 'ArrowLeft' }, window, 'keyup')
+    fire({ key: 'ArrowDown', shiftKey: true }, window, 'keyup')
+
+    expect(onNudgeEnd).toHaveBeenCalledTimes(2)
+  })
+
+  it('n\'appelle pas onNudgeEnd pour une autre touche, ni au keydown', () => {
+    const { onNudgeEnd } = setup()
+
+    fire({ key: 'ArrowLeft' })
+    fire({ key: 'a' }, window, 'keyup')
+    fire({ key: 'constructor' }, window, 'keyup')
+
+    expect(onNudgeEnd).not.toHaveBeenCalled()
+  })
+
+  it('utilise toujours les derniers callbacks après un nouveau rendu', () => {
+    const first = vi.fn()
+    const second = vi.fn()
+    const { rerender } = renderHook((props) => useKeyboardShortcuts(props), {
+      initialProps: { hasSelection: true, onDeleteSelection: vi.fn(), onNudge: first },
+    })
+
+    rerender({ hasSelection: true, onDeleteSelection: vi.fn(), onNudge: second })
+    fire({ key: 'ArrowUp' })
+
+    expect(first).not.toHaveBeenCalled()
+    expect(second).toHaveBeenCalledTimes(1)
+  })
+
+  it('retire ses listeners au démontage', () => {
+    const { onNudge, onNudgeEnd, unmount } = setup()
+
+    unmount()
+    const event = fire({ key: 'ArrowUp' })
+    fire({ key: 'ArrowUp' }, window, 'keyup')
+
+    expect(onNudge).not.toHaveBeenCalled()
+    expect(onNudgeEnd).not.toHaveBeenCalled()
     expect(event.defaultPrevented).toBe(false)
   })
 })
