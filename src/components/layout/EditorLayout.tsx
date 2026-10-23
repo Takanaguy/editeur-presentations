@@ -138,6 +138,7 @@ export function EditorLayout() {
             slides={slides}
             selectedSlideId={selectedSlideId}
             onSelect={(slideId) => dispatch({ type: 'slide/select', slideId })}
+            onMoveSlide={(slideId, toIndex) => dispatch({ type: 'slide/move', slideId, toIndex })}
           />
         </div>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">

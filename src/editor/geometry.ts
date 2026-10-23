@@ -73,3 +73,15 @@ export function applyResize(start: Bounds, handle: ResizeHandle, dx: number, dy:
 
   return { x: left, y: top, width: right - left, height: bottom - top }
 }
+
+// Position d'insertion d'une diapositive glissée, pour 'slide/move'.
+// `otherCenters` : centre vertical de chaque vignette AUTRE que celle qu'on traîne,
+// dans l'ordre de la liste. Le résultat est le nombre de ces centres au dessus du
+// pointeur : c'est l'index d'arrivée APRÈS retrait de la diapositive déplacée,
+// donc directement le `toIndex` attendu. Un pointeur exactement sur un centre ne
+// le dépasse pas encore (comparaison stricte). Un pointeur non fini (NaN, Infinity)
+// vient d'un bug : on retourne 0, ce qui est toujours un index valide.
+export function dropIndexFromPointer(otherCenters: number[], pointerY: number): number {
+  if (!Number.isFinite(pointerY)) return 0
+  return otherCenters.filter((center) => center < pointerY).length
+}

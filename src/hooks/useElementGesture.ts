@@ -100,6 +100,12 @@ export function useElementGesture({ scale, onMove, onResize }: ElementGestureOpt
 
       function handleMove(moveEvent: PointerEvent) {
         if (moveEvent.pointerId !== active.pointerId) return
+        // Plus aucun bouton enfoncé : le pointerup s'est perdu (alt-tab, relâché hors de
+        // la page). On abandonne sans rien valider, sinon le geste resterait bloqué.
+        if (moveEvent.buttons === 0) {
+          endGesture()
+          return
+        }
         // Pixels écran vers unités logiques : on divise par l'échelle.
         const { scale: currentScale } = latest.current
         const dx = (moveEvent.clientX - active.startX) / currentScale
@@ -139,11 +145,14 @@ export function useElementGesture({ scale, onMove, onResize }: ElementGestureOpt
       window.addEventListener('pointerup', handleUp)
       window.addEventListener('pointercancel', handleCancel)
       window.addEventListener('keydown', handleKeyDown)
+      // La fenêtre perd le focus en plein geste : le pointerup n'arrivera peut-être jamais.
+      window.addEventListener('blur', endGesture)
       stopListening.current = () => {
         window.removeEventListener('pointermove', handleMove)
         window.removeEventListener('pointerup', handleUp)
         window.removeEventListener('pointercancel', handleCancel)
         window.removeEventListener('keydown', handleKeyDown)
+        window.removeEventListener('blur', endGesture)
       }
     },
     [endGesture],

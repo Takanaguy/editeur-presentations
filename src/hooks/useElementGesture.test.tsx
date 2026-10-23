@@ -221,19 +221,75 @@ describe('useElementGesture', () => {
     expect(onResize).not.toHaveBeenCalled()
   })
 
+  describe('pointerup perdu', () => {
+    it('un pointermove sans bouton enfoncé annule le geste sans callback', () => {
+      const { target, onMove, onResize, preview } = setup()
+
+      firePointer(target, 'pointerdown', { clientX: 0, clientY: 0 })
+      firePointer(window, 'pointermove', { clientX: 40, clientY: 40 })
+      expect(preview()).not.toBeNull()
+      firePointer(window, 'pointermove', { clientX: 80, clientY: 80, buttons: 0 })
+
+      expect(preview()).toBeNull()
+      firePointer(window, 'pointerup', { clientX: 80, clientY: 80 })
+      expect(onMove).not.toHaveBeenCalled()
+      expect(onResize).not.toHaveBeenCalled()
+    })
+
+    it('un blur de la fenêtre en plein geste annule sans callback', () => {
+      const { target, onMove, onResize, preview } = setup()
+
+      firePointer(target, 'pointerdown', { clientX: 0, clientY: 0 })
+      firePointer(window, 'pointermove', { clientX: 40, clientY: 40 })
+      fireEvent.blur(window)
+
+      expect(preview()).toBeNull()
+      firePointer(window, 'pointerup', { clientX: 40, clientY: 40 })
+      expect(onMove).not.toHaveBeenCalled()
+      expect(onResize).not.toHaveBeenCalled()
+    })
+
+    it('après annulation, un nouveau geste peut démarrer', () => {
+      const { target, onMove } = setup()
+
+      firePointer(target, 'pointerdown', { clientX: 0, clientY: 0 })
+      firePointer(window, 'pointermove', { clientX: 40, clientY: 40, buttons: 0 })
+      firePointer(target, 'pointerdown', { clientX: 0, clientY: 0 })
+      fireEvent.blur(window)
+
+      firePointer(target, 'pointerdown', { clientX: 0, clientY: 0 })
+      firePointer(window, 'pointermove', { clientX: 10, clientY: 20 })
+      firePointer(window, 'pointerup', { clientX: 10, clientY: 20 })
+
+      expect(onMove).toHaveBeenCalledTimes(1)
+      expect(onMove).toHaveBeenCalledWith(element.id, 110, 120)
+    })
+
+    it("l'écouteur blur est retiré au démontage", () => {
+      const remove = vi.spyOn(window, 'removeEventListener')
+      const { target, unmount } = setup()
+
+      firePointer(target, 'pointerdown')
+      unmount()
+
+      expect(remove.mock.calls.map(([type]) => type)).toContain('blur')
+      remove.mockRestore()
+    })
+  })
+
   it('retire ses écouteurs de window à la fin du geste', () => {
     const add = vi.spyOn(window, 'addEventListener')
     const remove = vi.spyOn(window, 'removeEventListener')
     const { target } = setup()
-    const names = ['pointermove', 'pointerup', 'pointercancel', 'keydown']
+    const names = ['pointermove', 'pointerup', 'pointercancel', 'keydown', 'blur']
     const count = (spy: typeof add) => spy.mock.calls.filter(([type]) => names.includes(type)).length
     const before = { add: count(add), remove: count(remove) }
 
     firePointer(target, 'pointerdown')
-    expect(count(add) - before.add).toBe(4)
+    expect(count(add) - before.add).toBe(5)
     firePointer(window, 'pointerup')
 
-    expect(count(remove) - before.remove).toBe(4)
+    expect(count(remove) - before.remove).toBe(5)
     add.mockRestore()
     remove.mockRestore()
   })

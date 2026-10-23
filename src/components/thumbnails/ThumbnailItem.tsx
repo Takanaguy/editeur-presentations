@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import { SLIDE_WIDTH, type Slide } from '../../model/types'
 import { SlideView } from '../canvas/SlideView'
 
@@ -10,10 +10,35 @@ interface ThumbnailItemProps {
   number: number
   selected: boolean
   onSelect: (slideId: string) => void
+  // Démarre le glisser (absent : la vignette ne se glisse pas).
+  onPointerDown?: (event: ReactPointerEvent, slideId: string) => void
+  // Donne l'élément DOM au panneau, qui mesure les vignettes pendant le glisser.
+  onElement?: (slideId: string, element: HTMLButtonElement | null) => void
+  // Cette vignette est celle qu'on traîne en ce moment.
+  dragging?: boolean
 }
 
-export function ThumbnailItem({ slide, number, selected, onSelect }: ThumbnailItemProps) {
-  const ref = useRef<HTMLButtonElement>(null)
+export function ThumbnailItem({
+  slide,
+  number,
+  selected,
+  onSelect,
+  onPointerDown,
+  onElement,
+  dragging = false,
+}: ThumbnailItemProps) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  const slideId = slide.id
+
+  // Garde l'élément pour scrollIntoView et le transmet au panneau. useCallback pour que
+  // React ne détache et rattache pas la ref à chaque rendu.
+  const setRef = useCallback(
+    (element: HTMLButtonElement | null) => {
+      ref.current = element
+      onElement?.(slideId, element)
+    },
+    [onElement, slideId],
+  )
 
   // Garde la vignette sélectionnée visible (après ajout, duplication ou déplacement,
   // elle peut être hors champ). scrollIntoView n'existe pas dans jsdom : l'appel est protégé.
@@ -23,14 +48,16 @@ export function ThumbnailItem({ slide, number, selected, onSelect }: ThumbnailIt
 
   return (
     <button
-      ref={ref}
+      ref={setRef}
       type="button"
       aria-label={`Diapositive ${number}`}
       aria-current={selected ? 'true' : undefined}
       onClick={() => onSelect(slide.id)}
-      className={`relative block cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ${
+      onPointerDown={onPointerDown ? (event) => onPointerDown(event, slide.id) : undefined}
+      data-dragging={dragging ? 'true' : undefined}
+      className={`relative block rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ${
         selected ? 'ring-2 ring-blue-500' : 'ring-1 ring-slate-300 hover:ring-slate-400'
-      }`}
+      } ${dragging ? 'cursor-grabbing opacity-50' : 'cursor-pointer'}`}
     >
       {/* Le nom accessible vient de l'aria-label : le contenu visuel est masqué aux lecteurs d'écran. */}
       <div aria-hidden="true">

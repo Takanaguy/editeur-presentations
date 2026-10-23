@@ -5,6 +5,7 @@ import {
   applyResize,
   clamp,
   clampBounds,
+  dropIndexFromPointer,
   type Bounds,
   type ResizeHandle,
 } from './geometry'
@@ -266,5 +267,45 @@ describe('applyResize', () => {
         }
       }
     }
+  })
+})
+
+describe('dropIndexFromPointer', () => {
+  it('une liste vide donne 0', () => {
+    expect(dropIndexFromPointer([], 50)).toBe(0)
+  })
+
+  it('un pointeur au dessus de tout donne 0', () => {
+    expect(dropIndexFromPointer([50, 160, 270], -100)).toBe(0)
+    expect(dropIndexFromPointer([50, 160, 270], 10)).toBe(0)
+  })
+
+  it('un pointeur au dessous de tout donne le nombre de vignettes', () => {
+    expect(dropIndexFromPointer([50, 160, 270], 1000)).toBe(3)
+  })
+
+  it('un pointeur entre deux vignettes compte celles qui sont au dessus (3 vignettes)', () => {
+    const centers = [50, 160, 270]
+    expect(dropIndexFromPointer(centers, 100)).toBe(1)
+    expect(dropIndexFromPointer(centers, 200)).toBe(2)
+  })
+
+  it('compte dans l\'ordre de la liste (5 vignettes)', () => {
+    const centers = [50, 160, 270, 380, 490]
+    expect(dropIndexFromPointer(centers, 51)).toBe(1)
+    expect(dropIndexFromPointer(centers, 161)).toBe(2)
+    expect(dropIndexFromPointer(centers, 300)).toBe(3)
+    expect(dropIndexFromPointer(centers, 400)).toBe(4)
+    expect(dropIndexFromPointer(centers, 491)).toBe(5)
+  })
+
+  it('un pointeur exactement sur un centre ne le dépasse pas encore', () => {
+    expect(dropIndexFromPointer([50, 160, 270], 160)).toBe(1)
+  })
+
+  it('un pointeur non fini donne 0', () => {
+    expect(dropIndexFromPointer([50, 160], NaN)).toBe(0)
+    expect(dropIndexFromPointer([50, 160], Infinity)).toBe(0)
+    expect(dropIndexFromPointer([50, 160], -Infinity)).toBe(0)
   })
 })
