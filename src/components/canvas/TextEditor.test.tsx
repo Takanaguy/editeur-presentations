@@ -12,6 +12,28 @@ function setup(overrides: Parameters<typeof createTextElement>[0] = { text: 'Bon
   return { textarea, onCommit, onCancel, element }
 }
 
+describe('TextEditor : style du texte', () => {
+  it('applique gras, italique et alignement comme le rendu normal', () => {
+    const { textarea } = setup({ bold: true, italic: true, align: 'right' })
+
+    expect(textarea).toHaveStyle({ fontWeight: '700', fontStyle: 'italic', textAlign: 'right' })
+  })
+
+  it('un texte par défaut est en graisse normale, sans italique, aligné à gauche', () => {
+    const { textarea } = setup()
+
+    // Lecture directe du style en ligne : jsdom calcule mal la valeur « normal ».
+    const { style } = textarea
+    expect([style.fontWeight, style.fontStyle, style.textAlign]).toEqual(['normal', 'normal', 'left'])
+  })
+
+  it('applique le centrage', () => {
+    const { textarea } = setup({ align: 'center' })
+
+    expect(textarea).toHaveStyle({ textAlign: 'center' })
+  })
+})
+
 describe('TextEditor', () => {
   it('prend le focus à l\'ouverture avec tout le texte sélectionné', () => {
     const { textarea } = setup()

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   createImageElement,
@@ -8,13 +8,32 @@ import {
 import type { SlideElement } from '../../model/types'
 import { PropertiesPanel, toHexColor } from './PropertiesPanel'
 
-function setup(element: SlideElement | null) {
+const MIDDLE = { front: true, back: true }
+
+function setup(element: SlideElement | null, canReorder = MIDDLE) {
   const onUpdate = vi.fn()
   const onSeal = vi.fn()
-  const view = render(<PropertiesPanel element={element} onUpdate={onUpdate} onSeal={onSeal} />)
+  const onReorder = vi.fn()
+  const view = render(
+    <PropertiesPanel
+      element={element}
+      onUpdate={onUpdate}
+      onSeal={onSeal}
+      onReorder={onReorder}
+      canReorder={canReorder}
+    />,
+  )
   const rerender = (next: SlideElement | null) =>
-    view.rerender(<PropertiesPanel element={next} onUpdate={onUpdate} onSeal={onSeal} />)
-  return { onUpdate, onSeal, rerender }
+    view.rerender(
+      <PropertiesPanel
+        element={next}
+        onUpdate={onUpdate}
+        onSeal={onSeal}
+        onReorder={onReorder}
+        canReorder={canReorder}
+      />,
+    )
+  return { onUpdate, onSeal, onReorder, rerender }
 }
 
 describe('PropertiesPanel', () => {
@@ -197,6 +216,178 @@ describe('PropertiesPanel : rectangle et image', () => {
 
     expect(screen.queryByLabelText('Taille de police')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Texte alternatif')).not.toBeInTheDocument()
+  })
+})
+
+describe('PropertiesPanel : ordre d\'empilement', () => {
+  const NAMES = ['Premier plan', 'Avancer', 'Reculer', 'Arrière-plan']
+  const group = () => screen.getByRole('group', { name: 'Ordre d\'empilement' })
+
+  it.each([
+    ['texte', createTextElement()],
+    ['rectangle', createRectElement()],
+    ['image', createImageElement('data:,a')],
+  ])('propose les 4 boutons pour un %s', (_label, element) => {
+    setup(element)
+
+    for (const name of NAMES) {
+      expect(within(group()).getByRole('button', { name })).toBeEnabled()
+    }
+  })
+
+  it('désactive Premier plan et Avancer quand l\'élément est déjà devant', () => {
+    setup(createRectElement(), { front: false, back: true })
+
+    expect(screen.getByRole('button', { name: 'Premier plan' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Avancer' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Reculer' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Arrière-plan' })).toBeEnabled()
+  })
+
+  it('désactive Arrière-plan et Reculer quand l\'élément est déjà derrière', () => {
+    setup(createRectElement(), { front: true, back: false })
+
+    expect(screen.getByRole('button', { name: 'Arrière-plan' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Reculer' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Premier plan' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Avancer' })).toBeEnabled()
+  })
+
+  it('désactive les quatre boutons quand l\'élément est seul', () => {
+    setup(createRectElement(), { front: false, back: false })
+
+    for (const name of NAMES) {
+      expect(screen.getByRole('button', { name })).toBeDisabled()
+    }
+  })
+
+  it('chaque bouton appelle onReorder avec sa direction', async () => {
+    const { onReorder } = setup(createRectElement())
+
+    await userEvent.click(screen.getByRole('button', { name: 'Premier plan' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Avancer' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Reculer' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Arrière-plan' }))
+
+    expect(onReorder.mock.calls).toEqual([['front'], ['forward'], ['backward'], ['back']])
+  })
+
+  it('un bouton désactivé n\'appelle pas onReorder', async () => {
+    const { onReorder } = setup(createRectElement(), { front: false, back: true })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Avancer' }))
+
+    expect(onReorder).not.toHaveBeenCalled()
+  })
+
+  it('n\'apparaît pas sans sélection', () => {
+    setup(null)
+
+    expect(screen.queryByRole('group', { name: 'Ordre d\'empilement' })).not.toBeInTheDocument()
+  })
+})
+
+describe('PropertiesPanel : opacité', () => {
+  it.each([
+    ['texte', createTextElement()],
+    ['rectangle', createRectElement()],
+    ['image', createImageElement('data:,a')],
+  ])('propose un curseur de 0 à 100 pour un %s', (_label, element) => {
+    setup(element)
+
+    const slider = screen.getByLabelText('Opacité')
+    expect(slider).toHaveAttribute('type', 'range')
+    expect(slider).toHaveAttribute('min', '0')
+    expect(slider).toHaveAttribute('max', '100')
+    expect(slider).toHaveAttribute('step', '1')
+    expect(slider).toHaveValue('100')
+    expect(screen.getByText('100 %')).toBeInTheDocument()
+  })
+
+  it('affiche la valeur de l\'élément en pourcentage', () => {
+    setup(createRectElement({ opacity: 0.8 }))
+
+    expect(screen.getByLabelText('Opacité')).toHaveValue('80')
+    expect(screen.getByText('80 %')).toBeInTheDocument()
+  })
+
+  it('appelle onUpdate avec la fraction, sans erreur d\'arrondi', () => {
+    const { onUpdate } = setup(createRectElement())
+    const slider = screen.getByLabelText('Opacité')
+
+    fireEvent.change(slider, { target: { value: '30' } })
+    fireEvent.change(slider, { target: { value: '0' } })
+    fireEvent.change(slider, { target: { value: '57' } })
+
+    expect(onUpdate.mock.calls).toEqual([[{ opacity: 0.3 }], [{ opacity: 0 }], [{ opacity: 0.57 }]])
+  })
+
+  it('appelle onSeal au blur', () => {
+    const { onSeal } = setup(createRectElement())
+
+    fireEvent.blur(screen.getByLabelText('Opacité'))
+
+    expect(onSeal).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('PropertiesPanel : style du texte', () => {
+  it('propose Gras, Italique et les trois alignements pour un texte', () => {
+    setup(createTextElement())
+
+    const style = screen.getByRole('group', { name: 'Style du texte' })
+    expect(within(style).getByRole('button', { name: 'Gras' })).toBeInTheDocument()
+    expect(within(style).getByRole('button', { name: 'Italique' })).toBeInTheDocument()
+    const align = screen.getByRole('group', { name: 'Alignement du texte' })
+    for (const name of ['Aligner à gauche', 'Centrer', 'Aligner à droite']) {
+      expect(within(align).getByRole('button', { name })).toBeInTheDocument()
+    }
+  })
+
+  it.each([
+    ['rectangle', createRectElement()],
+    ['image', createImageElement('data:,a')],
+  ])('ne propose rien de tout cela pour un %s', (_label, element) => {
+    setup(element)
+
+    expect(screen.queryByRole('group', { name: 'Style du texte' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Alignement du texte' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Gras' })).not.toBeInTheDocument()
+  })
+
+  it('reflète l\'état de l\'élément avec aria-pressed', () => {
+    setup(createTextElement({ bold: true, italic: false, align: 'center' }))
+
+    expect(screen.getByRole('button', { name: 'Gras' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Italique' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Aligner à gauche' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Centrer' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Aligner à droite' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('Gras et Italique appellent onUpdate avec la valeur inverse, puis onSeal', async () => {
+    const { onUpdate, onSeal } = setup(createTextElement({ bold: false, italic: true }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Gras' }))
+    expect(onUpdate).toHaveBeenLastCalledWith({ bold: true })
+    expect(onSeal).toHaveBeenCalledTimes(1)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Italique' }))
+    expect(onUpdate).toHaveBeenLastCalledWith({ italic: false })
+    expect(onSeal).toHaveBeenCalledTimes(2)
+  })
+
+  it('les alignements appellent onUpdate avec la bonne valeur, puis onSeal', async () => {
+    const { onUpdate, onSeal } = setup(createTextElement())
+
+    await userEvent.click(screen.getByRole('button', { name: 'Centrer' }))
+    expect(onUpdate).toHaveBeenLastCalledWith({ align: 'center' })
+    await userEvent.click(screen.getByRole('button', { name: 'Aligner à droite' }))
+    expect(onUpdate).toHaveBeenLastCalledWith({ align: 'right' })
+    await userEvent.click(screen.getByRole('button', { name: 'Aligner à gauche' }))
+    expect(onUpdate).toHaveBeenLastCalledWith({ align: 'left' })
+
+    expect(onSeal).toHaveBeenCalledTimes(3)
   })
 })
 

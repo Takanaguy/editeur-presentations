@@ -9,7 +9,11 @@ export interface BaseElement {
   y: number
   width: number
   height: number
+  // Transparence de l'élément : 0 = invisible, 1 = opaque.
+  opacity: number
 }
+
+export type TextAlign = 'left' | 'center' | 'right'
 
 export interface TextElement extends BaseElement {
   type: 'text'
@@ -18,6 +22,9 @@ export interface TextElement extends BaseElement {
   color: string
   // null = pas de fond derrière le texte
   fill: string | null
+  bold: boolean
+  italic: boolean
+  align: TextAlign
 }
 
 export interface RectElement extends BaseElement {

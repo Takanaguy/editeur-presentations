@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { canRedo, canUndo } from '../../editor/history'
-import type { ElementChanges } from '../../editor/types'
+import type { ElementChanges, ReorderTarget } from '../../editor/types'
 import { useEditor } from '../../hooks/useEditor'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
 import { createImageElementFitted } from '../../io/imageElement'
@@ -40,7 +40,8 @@ export function EditorLayout() {
   const slide = slides[slideIndex]
   // Ne devrait jamais arriver : le reducer garantit une sélection valide.
   if (!slide) throw new Error('La diapositive sélectionnée est introuvable')
-  const element = slide.elements.find((e) => e.id === selectedElementId) ?? null
+  const elementIndex = slide.elements.findIndex((e) => e.id === selectedElementId)
+  const element = slide.elements[elementIndex] ?? null
 
   // L'édition ne vaut que pour le texte sélectionné de la diapositive affichée : si
   // l'élément disparaît, change de type, est désélectionné ou si la diapositive change,
@@ -64,6 +65,10 @@ export function EditorLayout() {
       key: `update:${element.id}:${Object.keys(changes).join(',')}`,
       action: { type: 'element/update', elementId: element.id, changes },
     })
+  }
+
+  function reorderSelection(to: ReorderTarget) {
+    if (element) dispatch({ type: 'element/reorder', elementId: element.id, to })
   }
 
   function deleteSelection() {
@@ -206,6 +211,11 @@ export function EditorLayout() {
             element={element}
             onUpdate={updateSelection}
             onSeal={() => dispatch({ type: 'history/seal' })}
+            onReorder={reorderSelection}
+            canReorder={{
+              front: elementIndex >= 0 && elementIndex < slide.elements.length - 1,
+              back: elementIndex > 0,
+            }}
           />
         </div>
       </div>

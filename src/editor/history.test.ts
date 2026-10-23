@@ -14,7 +14,12 @@ import {
   type AppAction,
   type HistoryState,
 } from './history'
-import { deepFreeze, elementById, makeElementState } from './testHelpers'
+import {
+  deepFreeze,
+  elementById,
+  makeElementState,
+  selectedElements as selectedElementsOf,
+} from './testHelpers'
 import type { EditorState } from './types'
 
 // Enchaîne les actions les unes après les autres.
@@ -712,6 +717,44 @@ describe('sélection après undo et redo', () => {
     // La diapositive 1 est modifiée par le redo et déjà sélectionnée : elle reste affichée.
     const redone = run(undone, REDO)
     expect(redone.editor.selectedSlideId).toBe(first.id)
+  })
+})
+
+describe('réordonnancement et historique', () => {
+  const orderOf = (history: HistoryState) =>
+    selectedElementsOf(history.editor).map((e) => e.id)
+
+  it("chaque réordonnancement crée une entrée, et undo restaure l'ordre", () => {
+    const { history, text, rect, image } = makeHistory()
+    const start = [text.id, rect.id, image.id]
+
+    const h1 = run(history, { type: 'element/reorder', elementId: text.id, to: 'front' })
+    expect(orderOf(h1)).toEqual([rect.id, image.id, text.id])
+    expect(h1.past).toHaveLength(1)
+
+    const h2 = run(h1, { type: 'element/reorder', elementId: image.id, to: 'back' })
+    expect(orderOf(h2)).toEqual([image.id, rect.id, text.id])
+    expect(h2.past).toHaveLength(2)
+
+    const u1 = run(h2, UNDO)
+    expect(orderOf(u1)).toEqual([rect.id, image.id, text.id])
+    expect(orderOf(run(u1, UNDO))).toEqual(start)
+    expect(orderOf(run(u1, UNDO, REDO))).toEqual([rect.id, image.id, text.id])
+  })
+
+  it("un réordonnancement sans effet ne crée pas d'entrée", () => {
+    const { history, image } = makeHistory()
+    const same = run(history, { type: 'element/reorder', elementId: image.id, to: 'front' })
+    expect(same).toBe(history)
+    expect(same.past).toHaveLength(0)
+  })
+
+  it("garde l'élément sélectionné après le réordonnancement et après undo", () => {
+    const { history, text } = makeHistory()
+    const selected = run(history, { type: 'element/select', elementId: text.id })
+    const moved = run(selected, { type: 'element/reorder', elementId: text.id, to: 'front' })
+    expect(moved.editor.selectedElementId).toBe(text.id)
+    expect(run(moved, UNDO).editor.selectedElementId).toBe(text.id)
   })
 })
 

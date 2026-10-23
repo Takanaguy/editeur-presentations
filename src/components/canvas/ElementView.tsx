@@ -1,5 +1,5 @@
 import type { CSSProperties, MouseEventHandler, PointerEventHandler } from 'react'
-import type { SlideElement } from '../../model/types'
+import type { SlideElement, TextElement } from '../../model/types'
 
 interface ElementViewProps {
   element: SlideElement
@@ -14,6 +14,15 @@ interface ElementViewProps {
 export const TEXT_PADDING = 8
 export const TEXT_LINE_HEIGHT = 1.25
 
+// Style du texte partagé avec TextEditor : l'édition doit ressembler au rendu.
+export function textStyle(element: TextElement): CSSProperties {
+  return {
+    fontWeight: element.bold ? 700 : 'normal',
+    fontStyle: element.italic ? 'italic' : 'normal',
+    textAlign: element.align,
+  }
+}
+
 // Rendu en lecture seule d'un élément, dans l'espace logique de la diapositive.
 export function ElementView({ element, onPointerDown, onDoubleClick }: ElementViewProps) {
   const box: CSSProperties = {
@@ -27,6 +36,8 @@ export function ElementView({ element, onPointerDown, onDoubleClick }: ElementVi
     // et la souris ne sélectionne pas le texte pendant le glisser.
     touchAction: onPointerDown ? 'none' : undefined,
     userSelect: onPointerDown ? 'none' : undefined,
+    // Seul l'élément est transparent : le cadre et les poignées vivent dans une autre couche.
+    opacity: element.opacity,
   }
 
   switch (element.type) {
@@ -42,6 +53,7 @@ export function ElementView({ element, onPointerDown, onDoubleClick }: ElementVi
             lineHeight: TEXT_LINE_HEIGHT,
             fontSize: element.fontSize,
             color: element.color,
+            ...textStyle(element),
             backgroundColor: element.fill ?? undefined,
             // Respecte les retours à la ligne saisis, et coupe les mots trop longs.
             whiteSpace: 'pre-wrap',

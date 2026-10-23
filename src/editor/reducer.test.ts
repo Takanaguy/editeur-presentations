@@ -276,12 +276,17 @@ describe('aiguillage des actions d\'éléments', () => {
     const changes = { text: 'Salut' }
     const afterUpdate = editorReducer(state, { type: 'element/update', elementId: text.id, changes })
     expect(elementById(afterUpdate, text.id)).toMatchObject(changes)
+
+    const afterReorder = editorReducer(state, { type: 'element/reorder', elementId: text.id, to: 'front' })
+    expect(selectedElements(afterReorder).at(-1)?.id).toBe(text.id)
   })
 
   it('retourne le même état pour une action d\'élément sans effet', () => {
     const { state } = makeElementState()
     expect(editorReducer(state, { type: 'element/delete', elementId: 'inconnu' })).toBe(state)
     expect(editorReducer(state, { type: 'element/select', elementId: null })).toBe(state)
+    const last = selectedElements(state).at(-1)
+    expect(editorReducer(state, { type: 'element/reorder', elementId: last?.id ?? '', to: 'front' })).toBe(state)
   })
 
   it('ne modifie jamais l\'état d\'origine pour aucune action d\'élément, gelé en profondeur', () => {
@@ -300,6 +305,8 @@ describe('aiguillage des actions d\'éléments', () => {
         bounds: { x: 0, y: 0, width: 80, height: 80 },
       })
       editorReducer(frozen, { type: 'element/update', elementId: text.id, changes: { text: 'Neuf' } })
+      editorReducer(frozen, { type: 'element/reorder', elementId: text.id, to: 'back' })
+      editorReducer(frozen, { type: 'element/reorder', elementId: text.id, to: 'front' })
     }).not.toThrow()
 
     expect(frozen).toEqual(snapshot)

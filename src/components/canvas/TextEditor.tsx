@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, type KeyboardEvent } from 'react'
 import type { TextElement } from '../../model/types'
-import { TEXT_LINE_HEIGHT, TEXT_PADDING } from './ElementView'
+import { TEXT_LINE_HEIGHT, TEXT_PADDING, textStyle } from './ElementView'
 
 interface TextEditorProps {
   element: TextElement
@@ -90,6 +90,7 @@ export function TextEditor({ element, onCommit, onCancel }: TextEditorProps) {
           fontSize: element.fontSize,
           fontFamily: 'inherit',
           color: element.color,
+          ...textStyle(element),
           backgroundColor: element.fill ?? 'transparent',
           whiteSpace: 'pre-wrap',
           overflowWrap: 'break-word',

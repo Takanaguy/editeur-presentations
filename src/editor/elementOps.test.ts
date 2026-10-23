@@ -6,6 +6,7 @@ import {
   addElement,
   deleteElement,
   moveElement,
+  reorderElement,
   resizeElement,
   selectElement,
   updateElement,
@@ -406,6 +407,194 @@ describe('updateElement', () => {
     expect(selectedElements(next)[0]).toBe(text)
     expect(selectedElements(next)[2]).toBe(image)
     expectSlideUntouched(state, next, 1)
+  })
+})
+
+describe('updateElement : opacité', () => {
+  const opacityOf = (state: EditorState, id: string) => {
+    const el = elementById(state, id)
+    return el?.opacity
+  }
+
+  it('modifie opacity sur les trois types', () => {
+    const { state, text, rect, image } = makeElementState()
+    for (const { id } of [text, rect, image]) {
+      expect(opacityOf(updateElement(state, id, { opacity: 0.4 }), id)).toBe(0.4)
+    }
+  })
+
+  it('borne opacity entre 0 et 1', () => {
+    const { state, rect } = makeElementState()
+    expect(opacityOf(updateElement(state, rect.id, { opacity: -3 }), rect.id)).toBe(0)
+    expect(opacityOf(updateElement(state, rect.id, { opacity: 7 }), rect.id)).toBe(1)
+    expect(opacityOf(updateElement(state, rect.id, { opacity: 0 }), rect.id)).toBe(0)
+  })
+
+  it('retourne le même état si l\'opacité borne sur la valeur actuelle', () => {
+    const { state, rect } = makeElementState()
+    expect(updateElement(state, rect.id, { opacity: 1 })).toBe(state)
+    expect(updateElement(state, rect.id, { opacity: 12 })).toBe(state)
+  })
+
+  it('rejette NaN et Infinity comme les autres nombres', () => {
+    const { state, rect } = makeElementState()
+    expect(updateElement(state, rect.id, { opacity: NaN })).toBe(state)
+    expect(updateElement(state, rect.id, { opacity: Infinity, fill: '#000' })).toBe(state)
+  })
+
+  it('ignore une opacité qui n\'est pas un nombre', () => {
+    const { state, rect } = makeElementState()
+    const bad = { opacity: '0.5' } as unknown as ElementChanges
+    expect(updateElement(state, rect.id, bad)).toBe(state)
+  })
+})
+
+describe('updateElement : style du texte', () => {
+  it('modifie bold, italic et align sur un texte', () => {
+    const { state, text } = makeElementState()
+    const result = elementById(
+      updateElement(state, text.id, { bold: true, italic: true, align: 'right' }),
+      text.id,
+    )
+    expect(result).toMatchObject({ bold: true, italic: true, align: 'right' })
+  })
+
+  it('accepte les trois alignements', () => {
+    const { state, text } = makeElementState()
+    for (const align of ['left', 'center', 'right'] as const) {
+      const result = elementById(updateElement(state, text.id, { align }), text.id)
+      expect(result).toMatchObject({ align })
+    }
+  })
+
+  it('ignore des valeurs invalides (données venues d\'un JSON)', () => {
+    const { state, text } = makeElementState()
+    const badBold = { bold: 'oui' } as unknown as ElementChanges
+    const badItalic = { italic: 1 } as unknown as ElementChanges
+    const badAlign = { align: 'justify' } as unknown as ElementChanges
+    expect(updateElement(state, text.id, badBold)).toBe(state)
+    expect(updateElement(state, text.id, badItalic)).toBe(state)
+    expect(updateElement(state, text.id, badAlign)).toBe(state)
+  })
+
+  it('applique la valeur valide et ignore l\'invalide dans la même action', () => {
+    const { state, text } = makeElementState()
+    const mixed = { bold: true, align: 'justify' } as unknown as ElementChanges
+    const result = elementById(updateElement(state, text.id, mixed), text.id)
+    expect(result).toEqual({ ...text, bold: true })
+  })
+
+  it('retourne le même état quand la valeur est déjà celle de l\'élément', () => {
+    const { state, text } = makeElementState()
+    expect(updateElement(state, text.id, { bold: false, italic: false, align: 'left' })).toBe(state)
+  })
+
+  it('ignore ces champs sur un rectangle et une image', () => {
+    const { state, rect, image } = makeElementState()
+    expect(updateElement(state, rect.id, { bold: true, italic: true, align: 'center' })).toBe(state)
+    expect(updateElement(state, image.id, { bold: true, align: 'center' })).toBe(state)
+    const mixed = elementById(updateElement(state, rect.id, { bold: true, fill: '#000' }), rect.id)
+    expect(mixed).toEqual({ ...rect, fill: '#000' })
+    expect(mixed).not.toHaveProperty('bold')
+  })
+})
+
+describe('reorderElement', () => {
+  const idsOf = (state: EditorState) => selectedElements(state).map((e) => e.id)
+
+  it('front : met l\'élément tout à la fin', () => {
+    const { state, text, rect, image } = makeElementState()
+    expect(idsOf(reorderElement(state, text.id, 'front'))).toEqual([rect.id, image.id, text.id])
+  })
+
+  it('back : met l\'élément tout au début', () => {
+    const { state, text, rect, image } = makeElementState()
+    expect(idsOf(reorderElement(state, image.id, 'back'))).toEqual([image.id, text.id, rect.id])
+  })
+
+  it('forward : avance d\'un cran vers la fin, depuis le milieu aussi', () => {
+    const { state, text, rect, image } = makeElementState()
+    expect(idsOf(reorderElement(state, text.id, 'forward'))).toEqual([rect.id, text.id, image.id])
+    expect(idsOf(reorderElement(state, rect.id, 'forward'))).toEqual([text.id, image.id, rect.id])
+  })
+
+  it('backward : recule d\'un cran vers le début, depuis le milieu aussi', () => {
+    const { state, text, rect, image } = makeElementState()
+    expect(idsOf(reorderElement(state, image.id, 'backward'))).toEqual([text.id, image.id, rect.id])
+    expect(idsOf(reorderElement(state, rect.id, 'backward'))).toEqual([rect.id, text.id, image.id])
+  })
+
+  it('front depuis le milieu et back depuis le milieu', () => {
+    const { state, text, rect, image } = makeElementState()
+    expect(idsOf(reorderElement(state, rect.id, 'front'))).toEqual([text.id, image.id, rect.id])
+    expect(idsOf(reorderElement(state, rect.id, 'back'))).toEqual([rect.id, text.id, image.id])
+  })
+
+  it('retourne le même état quand l\'élément est déjà à la limite demandée', () => {
+    const { state, text, image } = makeElementState()
+    expect(reorderElement(state, image.id, 'front')).toBe(state)
+    expect(reorderElement(state, image.id, 'forward')).toBe(state)
+    expect(reorderElement(state, text.id, 'back')).toBe(state)
+    expect(reorderElement(state, text.id, 'backward')).toBe(state)
+  })
+
+  it('ne fait rien pour un élément seul', () => {
+    const { state, second, other } = makeElementState()
+    const onSecond: EditorState = { ...state, selectedSlideId: second.id }
+    for (const to of ['front', 'back', 'forward', 'backward'] as const) {
+      expect(reorderElement(onSecond, other.id, to)).toBe(onSecond)
+    }
+  })
+
+  it('retourne le même état pour un id inconnu ou une direction inconnue', () => {
+    const { state, text } = makeElementState()
+    expect(reorderElement(state, 'inconnu', 'front')).toBe(state)
+    expect(reorderElement(state, text.id, 'sideways' as never)).toBe(state)
+  })
+
+  it('retourne le même état si la diapositive sélectionnée n\'existe pas', () => {
+    const { state, text } = makeElementState()
+    const broken: EditorState = { ...state, selectedSlideId: 'fantôme' }
+    expect(reorderElement(broken, text.id, 'front')).toBe(broken)
+  })
+
+  it('ne change pas la sélection', () => {
+    const { state, text } = makeElementState()
+    const selected: EditorState = { ...state, selectedElementId: text.id }
+    expect(reorderElement(selected, text.id, 'front').selectedElementId).toBe(text.id)
+    const other: EditorState = { ...state, selectedElementId: null }
+    expect(reorderElement(other, text.id, 'front').selectedElementId).toBeNull()
+  })
+
+  it('garde les mêmes objets éléments et les références des autres diapositives', () => {
+    const { state, text, rect, image } = makeElementState()
+    const next = reorderElement(state, text.id, 'front')
+    expect(selectedElements(next)).toEqual([rect, image, text])
+    expect(selectedElements(next)[2]).toBe(text)
+    expectSlideUntouched(state, next, 1)
+    expect(next.presentation.slides[0]).not.toBe(state.presentation.slides[0])
+  })
+
+  it('vise la diapositive sélectionnée', () => {
+    const { state, first, second } = makeElementState()
+    const a = createRectElement()
+    const b = createRectElement()
+    const withTwo: EditorState = {
+      ...state,
+      presentation: { ...state.presentation, slides: [first, { ...second, elements: [a, b] }] },
+      selectedSlideId: second.id,
+    }
+    const next = reorderElement(withTwo, a.id, 'front')
+    expect(next.presentation.slides[1]?.elements).toEqual([b, a])
+    expect(next.presentation.slides[0]).toBe(first)
+  })
+
+  it('ne modifie pas l\'état d\'origine, gelé en profondeur', () => {
+    const { state, text } = makeElementState()
+    const frozen = deepFreeze({ ...state })
+    const snapshot = structuredClone(frozen)
+    expect(() => reorderElement(frozen, text.id, 'front')).not.toThrow()
+    expect(frozen).toEqual(snapshot)
   })
 })
 

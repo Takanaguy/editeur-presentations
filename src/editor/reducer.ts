@@ -2,6 +2,7 @@ import {
   addElement,
   deleteElement,
   moveElement,
+  reorderElement,
   resizeElement,
   selectElement,
   updateElement,
@@ -34,6 +35,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return resizeElement(state, action.elementId, action.bounds)
     case 'element/update':
       return updateElement(state, action.elementId, action.changes)
+    case 'element/reorder':
+      return reorderElement(state, action.elementId, action.to)
     default:
       return assertNever(action)
   }

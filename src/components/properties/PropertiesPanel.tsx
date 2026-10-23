@@ -1,11 +1,12 @@
-import { useId, useState } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from '../../editor/elementOps'
-import type { ElementChanges } from '../../editor/types'
+import type { ElementChanges, ReorderTarget } from '../../editor/types'
 import type {
   ElementType,
   ImageElement,
   RectElement,
   SlideElement,
+  TextAlign,
   TextElement,
 } from '../../model/types'
 
@@ -19,6 +20,9 @@ const DEFAULT_FILL = '#ffffff'
 const LABEL_CLASS = 'text-sm text-slate-700'
 const INPUT_CLASS =
   'rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600'
+const BUTTON_CLASS =
+  'flex h-8 flex-1 cursor-pointer items-center justify-center rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300 disabled:hover:bg-slate-50'
+const PRESSED_CLASS = 'border-blue-300 bg-blue-100 text-blue-800 hover:bg-blue-100'
 
 // Un input de type color n'accepte que #rrggbb en minuscules : on développe #rgb et on
 // abaisse la casse. Toute autre valeur donnerait du noir de toute façon, autant le dire.
@@ -29,14 +33,30 @@ export function toHexColor(value: string): string {
   return `#${full}`
 }
 
+interface CanReorder {
+  // L'élément peut encore monter (il n'est pas au premier plan).
+  front: boolean
+  // L'élément peut encore descendre (il n'est pas à l'arrière-plan).
+  back: boolean
+}
+
 interface PropertiesPanelProps {
   element: SlideElement | null
   onUpdate: (changes: ElementChanges) => void
   // Appelé quand un champ perd le focus : coupe la fusion des modifications d'historique.
   onSeal: () => void
+  // Change la place de l'élément dans l'ordre d'empilement.
+  onReorder: (to: ReorderTarget) => void
+  canReorder: CanReorder
 }
 
-export function PropertiesPanel({ element, onUpdate, onSeal }: PropertiesPanelProps) {
+export function PropertiesPanel({
+  element,
+  onUpdate,
+  onSeal,
+  onReorder,
+  canReorder,
+}: PropertiesPanelProps) {
   return (
     <aside
       aria-label="Propriétés"
@@ -45,7 +65,14 @@ export function PropertiesPanel({ element, onUpdate, onSeal }: PropertiesPanelPr
       <h2 className="text-sm font-semibold text-slate-800">Propriétés</h2>
       {element ? (
         // key : changer d'élément repart de champs neufs (brouillon, dernière couleur de fond).
-        <ElementFields key={element.id} element={element} onUpdate={onUpdate} onSeal={onSeal} />
+        <ElementFields
+          key={element.id}
+          element={element}
+          onUpdate={onUpdate}
+          onSeal={onSeal}
+          onReorder={onReorder}
+          canReorder={canReorder}
+        />
       ) : (
         <p className="mt-3 text-sm text-slate-500">Aucun élément sélectionné</p>
       )}
@@ -59,7 +86,12 @@ interface FieldsProps<T extends SlideElement> {
   onSeal: () => void
 }
 
-function ElementFields({ element, onUpdate, onSeal }: FieldsProps<SlideElement>) {
+interface ElementFieldsProps extends FieldsProps<SlideElement> {
+  onReorder: (to: ReorderTarget) => void
+  canReorder: CanReorder
+}
+
+function ElementFields({ element, onUpdate, onSeal, onReorder, canReorder }: ElementFieldsProps) {
   return (
     <div className="mt-3 flex flex-col gap-3">
       <h3 className="text-sm font-medium text-slate-600">{TYPE_LABELS[element.type]}</h3>
@@ -68,6 +100,8 @@ function ElementFields({ element, onUpdate, onSeal }: FieldsProps<SlideElement>)
       {element.type === 'image' && (
         <ImageFields element={element} onUpdate={onUpdate} onSeal={onSeal} />
       )}
+      <OpacityField opacity={element.opacity} onUpdate={onUpdate} onSeal={onSeal} />
+      <OrderButtons onReorder={onReorder} canReorder={canReorder} />
       <Geometry element={element} />
     </div>
   )
@@ -99,6 +133,180 @@ function ColorField({ label, value, onChange, onBlur }: ColorFieldProps) {
   )
 }
 
+interface ToggleButtonProps {
+  label: string
+  pressed: boolean
+  onClick: () => void
+  children: ReactNode
+}
+
+// Bouton à bascule : l'état actif est dit au lecteur d'écran par aria-pressed, pas seulement
+// par la couleur.
+function ToggleButton({ label, pressed, onClick, children }: ToggleButtonProps) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      aria-pressed={pressed}
+      onClick={onClick}
+      className={`${BUTTON_CLASS} ${pressed ? PRESSED_CLASS : ''}`}
+    >
+      {children}
+    </button>
+  )
+}
+
+// Icône d'alignement : (x1, x2) de chacune des 4 lignes, dans une grille de 16.
+const ALIGN_LINES: Record<TextAlign, [number, number][]> = {
+  left: [
+    [2, 14],
+    [2, 9],
+    [2, 14],
+    [2, 9],
+  ],
+  center: [
+    [2, 14],
+    [4.5, 11.5],
+    [2, 14],
+    [4.5, 11.5],
+  ],
+  right: [
+    [2, 14],
+    [7, 14],
+    [2, 14],
+    [7, 14],
+  ],
+}
+
+const ALIGN_BUTTONS: { align: TextAlign; label: string }[] = [
+  { align: 'left', label: 'Aligner à gauche' },
+  { align: 'center', label: 'Centrer' },
+  { align: 'right', label: 'Aligner à droite' },
+]
+
+function TextStyleButtons({ element, onUpdate, onSeal }: FieldsProps<TextElement>) {
+  // Un clic de bouton est une intention complète : on coupe aussitôt la fusion de l'historique.
+  // Sinon deux bascules de Gras de suite (même clé de fusion) ne feraient qu'une entrée.
+  function apply(changes: ElementChanges) {
+    onUpdate(changes)
+    onSeal()
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div role="group" aria-label="Style du texte" className="flex gap-1">
+        <ToggleButton label="Gras" pressed={element.bold} onClick={() => apply({ bold: !element.bold })}>
+          <span aria-hidden="true" className="font-bold">
+            G
+          </span>
+        </ToggleButton>
+        <ToggleButton
+          label="Italique"
+          pressed={element.italic}
+          onClick={() => apply({ italic: !element.italic })}
+        >
+          <span aria-hidden="true" className="italic">
+            I
+          </span>
+        </ToggleButton>
+      </div>
+      <div role="group" aria-label="Alignement du texte" className="flex gap-1">
+        {ALIGN_BUTTONS.map(({ align, label }) => (
+          <ToggleButton
+            key={align}
+            label={label}
+            pressed={element.align === align}
+            onClick={() => apply({ align })}
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 16 16"
+              width="16"
+              height="16"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            >
+              {ALIGN_LINES[align].map(([x1, x2], row) => (
+                <line key={row} x1={x1} x2={x2} y1={3 + row * 3.3} y2={3 + row * 3.3} />
+              ))}
+            </svg>
+          </ToggleButton>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+interface OpacityFieldProps {
+  opacity: number
+  onUpdate: (changes: ElementChanges) => void
+  onSeal: () => void
+}
+
+function OpacityField({ opacity, onUpdate, onSeal }: OpacityFieldProps) {
+  const id = useId()
+  const percent = Math.round(opacity * 100)
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between gap-2">
+        <label htmlFor={id} className={LABEL_CLASS}>
+          Opacité
+        </label>
+        <span className="text-sm text-slate-500 tabular-nums">{percent} %</span>
+      </div>
+      <input
+        id={id}
+        type="range"
+        min={0}
+        max={100}
+        step={1}
+        value={percent}
+        // Sans cela, un lecteur d'écran annonce « 40 » et pas « 40 % ».
+        aria-valuetext={`${percent} %`}
+        // Entier divisé par 100 : 30 donne 0.3 exactement, jamais 0.30000000000000004.
+        onChange={(event) => onUpdate({ opacity: Math.round(Number(event.target.value)) / 100 })}
+        onBlur={onSeal}
+        className="w-full cursor-pointer accent-blue-600"
+      />
+    </div>
+  )
+}
+
+interface OrderButtonsProps {
+  onReorder: (to: ReorderTarget) => void
+  canReorder: CanReorder
+}
+
+function OrderButtons({ onReorder, canReorder }: OrderButtonsProps) {
+  const buttons: { to: ReorderTarget; label: string; enabled: boolean }[] = [
+    { to: 'front', label: 'Premier plan', enabled: canReorder.front },
+    { to: 'forward', label: 'Avancer', enabled: canReorder.front },
+    { to: 'backward', label: 'Reculer', enabled: canReorder.back },
+    { to: 'back', label: 'Arrière-plan', enabled: canReorder.back },
+  ]
+  return (
+    <div className="flex flex-col gap-1">
+      <span className={LABEL_CLASS}>Ordre</span>
+      <div role="group" aria-label="Ordre d'empilement" className="grid grid-cols-2 gap-1">
+        {buttons.map(({ to, label, enabled }) => (
+          <button
+            key={to}
+            type="button"
+            title={label}
+            disabled={!enabled}
+            onClick={() => onReorder(to)}
+            className={BUTTON_CLASS}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function TextFields({ element, onUpdate, onSeal }: FieldsProps<TextElement>) {
   const sizeId = useId()
   const fillToggleId = useId()
@@ -125,6 +333,7 @@ function TextFields({ element, onUpdate, onSeal }: FieldsProps<TextElement>) {
 
   return (
     <>
+      <TextStyleButtons element={element} onUpdate={onUpdate} onSeal={onSeal} />
       <div className="flex items-center justify-between gap-2">
         <label htmlFor={sizeId} className={LABEL_CLASS}>
           Taille de police

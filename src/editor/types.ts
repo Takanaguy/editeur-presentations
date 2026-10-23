@@ -30,11 +30,14 @@ type ValueInUnion<T, K extends PropertyKey> = T extends unknown
   : never
 
 // Tous les champs de contenu de tous les types d'éléments (text, fontSize, color,
-// fill, src, alt...), tous optionnels. Un champ qui ne concerne pas le type de
-// l'élément visé (text sur un rectangle) est ignoré à l'exécution.
+// fill, bold, italic, align, opacity, src, alt...), tous optionnels. Un champ qui ne
+// concerne pas le type de l'élément visé (text sur un rectangle) est ignoré à l'exécution.
 export type ElementChanges = {
   [K in Exclude<KeysOfUnion<SlideElement>, ProtectedElementKey>]?: ValueInUnion<SlideElement, K>
 }
+
+// front/back : tout au bout ; forward/backward : d'un cran vers le premier plan / l'arrière-plan.
+export type ReorderTarget = 'front' | 'back' | 'forward' | 'backward'
 
 // Toutes les actions d'éléments visent la diapositive sélectionnée.
 export type ElementAction =
@@ -49,5 +52,8 @@ export type ElementAction =
   // est atteinte.
   | { type: 'element/resize'; elementId: string; bounds: Bounds }
   | { type: 'element/update'; elementId: string; changes: ElementChanges }
+  // Change la place de l'élément dans l'ordre d'empilement (le dernier du tableau est au
+  // premier plan). Sans effet s'il est déjà à la limite demandée.
+  | { type: 'element/reorder'; elementId: string; to: ReorderTarget }
 
 export type EditorAction = SlideAction | ElementAction

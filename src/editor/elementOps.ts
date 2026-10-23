@@ -1,6 +1,6 @@
-import type { Slide, SlideElement } from '../model/types'
+import type { Slide, SlideElement, TextAlign } from '../model/types'
 import { clamp, clampBounds, type Bounds } from './geometry'
-import type { EditorState, ElementChanges } from './types'
+import type { EditorState, ElementChanges, ReorderTarget } from './types'
 
 // Même règle que slideOps : une action sans effet retourne le MÊME state.
 // Toutes les opérations visent la diapositive sélectionnée.
@@ -47,6 +47,9 @@ function mapElement(
 
 const isString = (value: unknown): value is string => typeof value === 'string'
 const isNumber = (value: unknown): value is number => typeof value === 'number'
+const isBoolean = (value: unknown): value is boolean => typeof value === 'boolean'
+const isTextAlign = (value: unknown): value is TextAlign =>
+  value === 'left' || value === 'center' || value === 'right'
 const isStringOrNull = (value: unknown): value is string | null =>
   value === null || typeof value === 'string'
 
@@ -119,6 +122,45 @@ export function resizeElement(state: EditorState, elementId: string, bounds: Bou
   return mapElement(state, elementId, (element) => withBounds(element, bounds))
 }
 
+// Déplace l'élément dans l'ordre d'empilement (l'ordre du tableau, le dernier est devant).
+// Déjà à la limite demandée, ou id inconnu : même state, donc pas d'entrée d'historique.
+export function reorderElement(
+  state: EditorState,
+  elementId: string,
+  to: ReorderTarget,
+): EditorState {
+  const slide = findSelectedSlide(state)
+  if (!slide) return state
+  const from = slide.elements.findIndex((e) => e.id === elementId)
+  const element = slide.elements[from]
+  if (!element) return state
+
+  const last = slide.elements.length - 1
+  let target: number
+  switch (to) {
+    case 'front':
+      target = last
+      break
+    case 'back':
+      target = 0
+      break
+    case 'forward':
+      target = Math.min(from + 1, last)
+      break
+    case 'backward':
+      target = Math.max(from - 1, 0)
+      break
+    default:
+      // Valeur venue d'un appelant non typé : action sans effet plutôt qu'un déplacement au hasard.
+      return state
+  }
+  if (target === from) return state
+
+  const elements = slide.elements.filter((_, i) => i !== from)
+  elements.splice(target, 0, element)
+  return { ...state, presentation: withElements(state, elements) }
+}
+
 export function updateElement(
   state: EditorState,
   elementId: string,
@@ -158,6 +200,10 @@ export function updateElement(
       return value
     }
 
+    // L'opacité est commune aux trois types : bornée à [0, 1] comme la taille de police.
+    const pickOpacity = (current: number) =>
+      pick('opacity', current, isNumber, (n) => clamp(n, 0, 1))
+
     // Chaque variante est reconstruite avec ses champs typés (pas de cast). id et
     // type viennent de `...element` : ils ne peuvent pas changer.
     let next: SlideElement
@@ -172,16 +218,25 @@ export function updateElement(
           color: pick('color', element.color, isString),
           // Seul champ nullable : null = pas de fond derrière le texte.
           fill: pick('fill', element.fill, isStringOrNull),
+          bold: pick('bold', element.bold, isBoolean),
+          italic: pick('italic', element.italic, isBoolean),
+          align: pick('align', element.align, isTextAlign),
+          opacity: pickOpacity(element.opacity),
         }
         break
       case 'rect':
-        next = { ...element, fill: pick('fill', element.fill, isString) }
+        next = {
+          ...element,
+          fill: pick('fill', element.fill, isString),
+          opacity: pickOpacity(element.opacity),
+        }
         break
       case 'image':
         next = {
           ...element,
           src: pick('src', element.src, isString),
           alt: pick('alt', element.alt, isString),
+          opacity: pickOpacity(element.opacity),
         }
         break
     }

@@ -73,6 +73,52 @@ describe('ElementView', () => {
     })
   })
 
+  it('applique l\'opacité aux trois types d\'éléments', () => {
+    const { container: text } = render(<ElementView element={createTextElement({ opacity: 0.3 })} />)
+    const { container: rect } = render(<ElementView element={createRectElement({ opacity: 0.5 })} />)
+    const { container: image } = render(
+      <ElementView element={createImageElement('data:,a', { opacity: 0.7 })} />,
+    )
+
+    expect(text.firstElementChild).toHaveStyle({ opacity: '0.3' })
+    expect(rect.firstElementChild).toHaveStyle({ opacity: '0.5' })
+    expect(image.firstElementChild).toHaveStyle({ opacity: '0.7' })
+  })
+
+  it('un élément opaque a une opacité de 1', () => {
+    const { container } = render(<ElementView element={createRectElement()} />)
+
+    expect(container.firstElementChild).toHaveStyle({ opacity: '1' })
+  })
+
+  it('un texte par défaut est en graisse normale, sans italique, aligné à gauche', () => {
+    render(<ElementView element={createTextElement({ text: 'Simple' })} />)
+
+    // Lecture directe du style en ligne : jsdom calcule mal la valeur « normal ».
+    const { style } = screen.getByText('Simple')
+    expect([style.fontWeight, style.fontStyle, style.textAlign]).toEqual(['normal', 'normal', 'left'])
+  })
+
+  it('applique gras, italique et alignement à un texte', () => {
+    render(
+      <ElementView
+        element={createTextElement({ text: 'Style', bold: true, italic: true, align: 'center' })}
+      />,
+    )
+
+    expect(screen.getByText('Style')).toHaveStyle({
+      fontWeight: '700',
+      fontStyle: 'italic',
+      textAlign: 'center',
+    })
+  })
+
+  it('applique l\'alignement à droite', () => {
+    render(<ElementView element={createTextElement({ text: 'Droite', align: 'right' })} />)
+
+    expect(screen.getByText('Droite')).toHaveStyle({ textAlign: 'right' })
+  })
+
   it('rend une image avec src, alt, object-fit contain et sans glisser', () => {
     const element = createImageElement('data:image/png;base64,AAAA', { alt: 'Un logo' })
     render(<ElementView element={element} />)

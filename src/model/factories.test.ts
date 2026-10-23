@@ -65,6 +65,17 @@ describe('duplicateSlide', () => {
     expect(copy.elements).not.toBe(slide.elements)
   })
 
+  it('conserve l\'opacité et le style de texte de chaque élément', () => {
+    const slide = createSlide()
+    slide.elements.push(
+      createTextElement({ opacity: 0.4, bold: true, italic: true, align: 'right' }),
+      createRectElement({ opacity: 0.7 }),
+    )
+    const copy = duplicateSlide(slide)
+    expect(copy.elements[0]).toMatchObject({ opacity: 0.4, bold: true, italic: true, align: 'right' })
+    expect(copy.elements[1]).toMatchObject({ opacity: 0.7 })
+  })
+
   it('copie une diapositive vide', () => {
     const copy = duplicateSlide(createSlide())
     expect(copy.elements).toEqual([])
@@ -105,6 +116,20 @@ describe('createTextElement', () => {
     expect(el).toMatchObject({ text: 'Bonjour', fontSize: 20, fill: '#fff', x: 10 })
   })
 
+  it('a un style de texte neutre et une opacité de 1 par défaut', () => {
+    expect(createTextElement()).toMatchObject({
+      bold: false,
+      italic: false,
+      align: 'left',
+      opacity: 1,
+    })
+  })
+
+  it('accepte de surcharger le style et l\'opacité', () => {
+    const el = createTextElement({ bold: true, italic: true, align: 'center', opacity: 0.5 })
+    expect(el).toMatchObject({ bold: true, italic: true, align: 'center', opacity: 0.5 })
+  })
+
   it('ne laisse pas écraser id ni type, même sans le typage', () => {
     const el = createTextElement({ id: 'pirate', type: 'rect' } as never)
     expect(el.id).not.toBe('pirate')
@@ -126,6 +151,17 @@ describe('createRectElement', () => {
   it('applique les overrides', () => {
     const el = createRectElement({ fill: '#000', width: 100, height: 50 })
     expect(el).toMatchObject({ fill: '#000', width: 100, height: 50 })
+  })
+
+  it('est opaque par défaut et accepte une autre opacité', () => {
+    expect(createRectElement().opacity).toBe(1)
+    expect(createRectElement({ opacity: 0.25 }).opacity).toBe(0.25)
+  })
+
+  it('n\'a pas de champs de style de texte', () => {
+    const el = createRectElement()
+    expect(el).not.toHaveProperty('bold')
+    expect(el).not.toHaveProperty('align')
   })
 
   it('ne laisse pas écraser id ni type, même sans le typage', () => {
@@ -155,6 +191,11 @@ describe('createImageElement', () => {
   it('applique les overrides', () => {
     const el = createImageElement('a.png', { alt: 'Un chat', y: 0 })
     expect(el).toMatchObject({ src: 'a.png', alt: 'Un chat', y: 0 })
+  })
+
+  it('est opaque par défaut et accepte une autre opacité', () => {
+    expect(createImageElement('a.png').opacity).toBe(1)
+    expect(createImageElement('a.png', { opacity: 0.6 }).opacity).toBe(0.6)
   })
 
   it('ne laisse pas écraser id, type ni src, même sans le typage', () => {
