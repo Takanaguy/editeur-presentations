@@ -33,6 +33,8 @@ export interface KeyboardShortcuts {
   onDeleteSelection: () => void
   onUndo?: () => void
   onRedo?: () => void
+  // Faux : tous les raccourcis sont suspendus (mode présentation). Vrai par défaut.
+  enabled?: boolean
 }
 
 // Écoute le clavier sur la fenêtre : suppression, annuler et rétablir.
@@ -61,6 +63,8 @@ export function useKeyboardShortcuts(shortcuts: KeyboardShortcuts) {
     }
 
     function handleKeyDown(event: KeyboardEvent) {
+      // Lu à chaque touche : réactiver les raccourcis n'exige pas de réinstaller l'écouteur.
+      if (latest.current.enabled === false) return
       if (handleHistoryKey(event)) return
       const { hasSelection, onDeleteSelection } = latest.current
       if (event.key !== 'Delete' && event.key !== 'Backspace') return

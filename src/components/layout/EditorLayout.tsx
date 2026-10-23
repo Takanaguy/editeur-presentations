@@ -9,6 +9,7 @@ import { altFromImageUrl } from '../../io/imageUrl'
 import { ImageImportError, readImageFile } from '../../io/readImageFile'
 import { createRectElement, createTextElement } from '../../model/factories'
 import { SlideCanvas } from '../canvas/SlideCanvas'
+import { PresentationMode } from '../presentation/PresentationMode'
 import { PropertiesPanel } from '../properties/PropertiesPanel'
 import { ElementToolbar } from '../toolbar/ElementToolbar'
 import { UndoRedoButtons } from '../toolbar/UndoRedoButtons'
@@ -22,6 +23,9 @@ export function EditorLayout() {
   const [importError, setImportError] = useState<string | null>(null)
   // Texte en cours d'édition : un état d'interface, hors historique.
   const [editingId, setEditingId] = useState<string | null>(null)
+  // Mode présentation ouvert : état d'interface, hors historique.
+  const [presenting, setPresenting] = useState(false)
+  const presentButtonRef = useRef<HTMLButtonElement>(null)
   const { presentation, selectedSlideId, selectedElementId } = history.editor
 
   // Id de la diapositive sélectionnée MAINTENANT, lisible depuis un import asynchrone
@@ -79,7 +83,16 @@ export function EditorLayout() {
     onDeleteSelection: deleteSelection,
     onUndo: undo,
     onRedo: redo,
+    // Pendant la présentation, Suppr, Retour arrière et Ctrl+Z ne doivent rien toucher.
+    enabled: !presenting,
   })
+
+  // Rend le focus au bouton Présenter à la sortie, pas au premier rendu.
+  const wasPresenting = useRef(false)
+  useEffect(() => {
+    if (wasPresenting.current && !presenting) presentButtonRef.current?.focus()
+    wasPresenting.current = presenting
+  }, [presenting])
 
   // Mesure l'image puis l'ajoute. Toute erreur d'import est affichée dans la barre d'outils.
   async function addImage(getSrc: () => Promise<string>, alt: string) {
@@ -105,78 +118,104 @@ export function EditorLayout() {
   }
 
   return (
-    <div className="flex h-screen flex-col bg-slate-50 text-slate-900">
-      <header className="flex h-10 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4">
-        <div className="flex items-center gap-3">
-          <h1 className="text-sm font-semibold">{presentation.title}</h1>
-          <UndoRedoButtons
-            canUndo={canUndo(history)}
-            canRedo={canRedo(history)}
-            onUndo={undo}
-            onRedo={redo}
+    <>
+      {/* inert pendant la présentation : rien derrière n'est focalisable ni cliquable, et les
+          lecteurs d'écran l'ignorent. Le mode présentation est son frère, donc non concerné. */}
+      <div className="flex h-screen flex-col bg-slate-50 text-slate-900" inert={presenting}>
+        <header className="flex h-10 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4">
+          <div className="flex items-center gap-3">
+            <h1 className="text-sm font-semibold">{presentation.title}</h1>
+            <UndoRedoButtons
+              canUndo={canUndo(history)}
+              canRedo={canRedo(history)}
+              onUndo={undo}
+              onRedo={redo}
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-slate-500">Éditeur de présentations</span>
+            <button
+              ref={presentButtonRef}
+              type="button"
+              aria-label="Présenter"
+              title="Présenter en plein écran"
+              onClick={() => setPresenting(true)}
+              className="flex h-7 cursor-pointer items-center gap-1.5 rounded-md bg-blue-600 px-3 text-xs font-medium text-white hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z" />
+              </svg>
+              Présenter
+            </button>
+          </div>
+        </header>
+        <div className="flex min-h-0 flex-1">
+          <div className="flex min-h-0 w-48 shrink-0 flex-col border-r border-slate-200 bg-white">
+            <SlideToolbar
+              canDelete={slides.length > 1}
+              canMoveUp={slideIndex > 0}
+              canMoveDown={slideIndex < slides.length - 1}
+              onAdd={() => dispatch({ type: 'slide/add' })}
+              onDuplicate={() => dispatch({ type: 'slide/duplicate', slideId: selectedSlideId })}
+              onDelete={() => dispatch({ type: 'slide/delete', slideId: selectedSlideId })}
+              onMoveUp={() =>
+                dispatch({ type: 'slide/move', slideId: selectedSlideId, toIndex: slideIndex - 1 })
+              }
+              onMoveDown={() =>
+                dispatch({ type: 'slide/move', slideId: selectedSlideId, toIndex: slideIndex + 1 })
+              }
+            />
+            <ThumbnailPanel
+              slides={slides}
+              selectedSlideId={selectedSlideId}
+              onSelect={(slideId) => dispatch({ type: 'slide/select', slideId })}
+              onMoveSlide={(slideId, toIndex) => dispatch({ type: 'slide/move', slideId, toIndex })}
+            />
+          </div>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <ElementToolbar
+              canDelete={element !== null}
+              error={importError}
+              onAddText={() => {
+                setImportError(null)
+                dispatch({ type: 'element/add', element: createTextElement() })
+              }}
+              onAddRect={() => {
+                setImportError(null)
+                dispatch({ type: 'element/add', element: createRectElement() })
+              }}
+              onAddImageFromUrl={(url) => void addImage(() => Promise.resolve(url), altFromImageUrl(url))}
+              onAddImageFromFile={(file) => void addImage(() => readImageFile(file), file.name)}
+              onDelete={deleteSelection}
+            />
+            <SlideCanvas
+              slide={slide}
+              selectedElementId={selectedElementId}
+              onSelectElement={(elementId) => dispatch({ type: 'element/select', elementId })}
+              onMoveElement={(elementId, x, y) => dispatch({ type: 'element/move', elementId, x, y })}
+              onResizeElement={(elementId, bounds) =>
+                dispatch({ type: 'element/resize', elementId, bounds })
+              }
+              editingElementId={editingElementId}
+              onEditElement={setEditingId}
+              onCommitText={commitText}
+              onCancelEdit={() => setEditingId(null)}
+            />
+          </div>
+          <PropertiesPanel
+            element={element}
+            onUpdate={updateSelection}
+            onSeal={() => dispatch({ type: 'history/seal' })}
           />
         </div>
-        <span className="text-xs text-slate-500">Éditeur de présentations</span>
-      </header>
-      <div className="flex min-h-0 flex-1">
-        <div className="flex min-h-0 w-48 shrink-0 flex-col border-r border-slate-200 bg-white">
-          <SlideToolbar
-            canDelete={slides.length > 1}
-            canMoveUp={slideIndex > 0}
-            canMoveDown={slideIndex < slides.length - 1}
-            onAdd={() => dispatch({ type: 'slide/add' })}
-            onDuplicate={() => dispatch({ type: 'slide/duplicate', slideId: selectedSlideId })}
-            onDelete={() => dispatch({ type: 'slide/delete', slideId: selectedSlideId })}
-            onMoveUp={() =>
-              dispatch({ type: 'slide/move', slideId: selectedSlideId, toIndex: slideIndex - 1 })
-            }
-            onMoveDown={() =>
-              dispatch({ type: 'slide/move', slideId: selectedSlideId, toIndex: slideIndex + 1 })
-            }
-          />
-          <ThumbnailPanel
-            slides={slides}
-            selectedSlideId={selectedSlideId}
-            onSelect={(slideId) => dispatch({ type: 'slide/select', slideId })}
-            onMoveSlide={(slideId, toIndex) => dispatch({ type: 'slide/move', slideId, toIndex })}
-          />
-        </div>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <ElementToolbar
-            canDelete={element !== null}
-            error={importError}
-            onAddText={() => {
-              setImportError(null)
-              dispatch({ type: 'element/add', element: createTextElement() })
-            }}
-            onAddRect={() => {
-              setImportError(null)
-              dispatch({ type: 'element/add', element: createRectElement() })
-            }}
-            onAddImageFromUrl={(url) => void addImage(() => Promise.resolve(url), altFromImageUrl(url))}
-            onAddImageFromFile={(file) => void addImage(() => readImageFile(file), file.name)}
-            onDelete={deleteSelection}
-          />
-          <SlideCanvas
-            slide={slide}
-            selectedElementId={selectedElementId}
-            onSelectElement={(elementId) => dispatch({ type: 'element/select', elementId })}
-            onMoveElement={(elementId, x, y) => dispatch({ type: 'element/move', elementId, x, y })}
-            onResizeElement={(elementId, bounds) =>
-              dispatch({ type: 'element/resize', elementId, bounds })
-            }
-            editingElementId={editingElementId}
-            onEditElement={setEditingId}
-            onCommitText={commitText}
-            onCancelEdit={() => setEditingId(null)}
-          />
-        </div>
-        <PropertiesPanel
-          element={element}
-          onUpdate={updateSelection}
-          onSeal={() => dispatch({ type: 'history/seal' })}
-        />
       </div>
-    </div>
+      {presenting && (
+        <PresentationMode
+          slides={slides}
+          startIndex={slideIndex}
+          onExit={() => setPresenting(false)}
+        />
+      )}
+    </>
   )
 }

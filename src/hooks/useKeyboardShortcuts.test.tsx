@@ -185,6 +185,69 @@ describe('useKeyboardShortcuts', () => {
   })
 })
 
+describe('useKeyboardShortcuts : option enabled', () => {
+  function press(init: KeyboardEventInit) {
+    const event = new KeyboardEvent('keydown', { cancelable: true, bubbles: true, ...init })
+    window.dispatchEvent(event)
+    return event
+  }
+
+  function setup(enabled?: boolean) {
+    const handlers = { onDeleteSelection: vi.fn(), onUndo: vi.fn(), onRedo: vi.fn() }
+    const view = renderHook((props) => useKeyboardShortcuts(props), {
+      initialProps: { hasSelection: true, enabled, ...handlers },
+    })
+    return { ...handlers, ...view }
+  }
+
+  it.each([
+    ['Delete', { key: 'Delete' }],
+    ['Backspace', { key: 'Backspace' }],
+    ['Ctrl+Z', { key: 'z', ctrlKey: true }],
+    ['Ctrl+Y', { key: 'y', ctrlKey: true }],
+    ['Ctrl+Maj+Z', { key: 'Z', ctrlKey: true, shiftKey: true }],
+  ])('%s ne déclenche rien et ne bloque rien avec enabled: false', (_name, init) => {
+    const { onDeleteSelection, onUndo, onRedo } = setup(false)
+
+    const event = press(init)
+
+    expect(onDeleteSelection).not.toHaveBeenCalled()
+    expect(onUndo).not.toHaveBeenCalled()
+    expect(onRedo).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it.each([undefined, true])('les raccourcis agissent avec enabled: %s', (enabled) => {
+    const { onDeleteSelection, onUndo, onRedo } = setup(enabled)
+
+    press({ key: 'Delete' })
+    press({ key: 'z', ctrlKey: true })
+    press({ key: 'y', ctrlKey: true })
+
+    expect(onDeleteSelection).toHaveBeenCalledTimes(1)
+    expect(onUndo).toHaveBeenCalledTimes(1)
+    expect(onRedo).toHaveBeenCalledTimes(1)
+  })
+
+  it('se réactive proprement, sans rejouer ce qui a été ignoré', () => {
+    const { onDeleteSelection, onUndo, rerender } = setup(false)
+    press({ key: 'Delete' })
+    press({ key: 'z', ctrlKey: true })
+
+    rerender({ hasSelection: true, enabled: true, onDeleteSelection, onUndo, onRedo: vi.fn() })
+    expect(onDeleteSelection).not.toHaveBeenCalled()
+    press({ key: 'Delete' })
+    press({ key: 'z', ctrlKey: true })
+
+    expect(onDeleteSelection).toHaveBeenCalledTimes(1)
+    expect(onUndo).toHaveBeenCalledTimes(1)
+
+    rerender({ hasSelection: true, enabled: false, onDeleteSelection, onUndo, onRedo: vi.fn() })
+    press({ key: 'Delete' })
+    expect(onDeleteSelection).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('useKeyboardShortcuts : annuler et rétablir', () => {
   afterEach(() => {
     document.body.innerHTML = ''
