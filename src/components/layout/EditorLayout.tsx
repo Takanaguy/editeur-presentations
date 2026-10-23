@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ElementChanges } from '../../editor/types'
 import { useEditor } from '../../hooks/useEditor'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
 import { createImageElementFitted } from '../../io/imageElement'
@@ -17,6 +18,8 @@ export function EditorLayout() {
   const { history, dispatch } = useEditor()
   // Erreur du dernier import d'image, effacée à la prochaine tentative.
   const [importError, setImportError] = useState<string | null>(null)
+  // Texte en cours d'édition : un état d'interface, hors historique.
+  const [editingId, setEditingId] = useState<string | null>(null)
   const { presentation, selectedSlideId, selectedElementId } = history.editor
 
   // Id de la diapositive sélectionnée MAINTENANT, lisible depuis un import asynchrone
@@ -32,6 +35,30 @@ export function EditorLayout() {
   // Ne devrait jamais arriver : le reducer garantit une sélection valide.
   if (!slide) throw new Error('La diapositive sélectionnée est introuvable')
   const element = slide.elements.find((e) => e.id === selectedElementId) ?? null
+
+  // L'édition ne vaut que pour le texte sélectionné de la diapositive affichée : si
+  // l'élément disparaît, change de type, est désélectionné ou si la diapositive change,
+  // elle se ferme d'elle-même.
+  const editingElementId = element?.type === 'text' && element.id === editingId ? element.id : null
+  // On remet aussi l'état à null : sinon, resélectionner plus tard cet élément
+  // rouvrirait l'éditeur tout seul. (Ajustement pendant le rendu, sans effet.)
+  if (editingId !== null && editingElementId === null) setEditingId(null)
+
+  function commitText(elementId: string, text: string) {
+    // Une seule action normale : une session d'édition = une entrée d'historique.
+    dispatch({ type: 'element/update', elementId, changes: { text } })
+    setEditingId(null)
+  }
+
+  function updateSelection(changes: ElementChanges) {
+    if (!element) return
+    // Les modifications successives du même champ forment une seule entrée d'historique.
+    dispatch({
+      type: 'history/coalesced',
+      key: `update:${element.id}:${Object.keys(changes).join(',')}`,
+      action: { type: 'element/update', elementId: element.id, changes },
+    })
+  }
 
   function deleteSelection() {
     if (element) dispatch({ type: 'element/delete', elementId: element.id })
@@ -114,9 +141,17 @@ export function EditorLayout() {
             onResizeElement={(elementId, bounds) =>
               dispatch({ type: 'element/resize', elementId, bounds })
             }
+            editingElementId={editingElementId}
+            onEditElement={setEditingId}
+            onCommitText={commitText}
+            onCancelEdit={() => setEditingId(null)}
           />
         </div>
-        <PropertiesPanel element={element} />
+        <PropertiesPanel
+          element={element}
+          onUpdate={updateSelection}
+          onSeal={() => dispatch({ type: 'history/seal' })}
+        />
       </div>
     </div>
   )

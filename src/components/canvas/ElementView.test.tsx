@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import {
   createImageElement,
   createRectElement,
@@ -33,6 +33,25 @@ describe('ElementView', () => {
       whiteSpace: 'pre-wrap',
       overflow: 'hidden',
     })
+  })
+
+  it('garde le texte à l\'écart des bords de sa boîte', () => {
+    render(<ElementView element={createTextElement({ text: 'Marge', width: 300 })} />)
+
+    expect(screen.getByText('Marge')).toHaveStyle({
+      padding: '8px',
+      boxSizing: 'border-box',
+      lineHeight: '1.25',
+    })
+  })
+
+  it('appelle onDoubleClick sur un texte', () => {
+    const onDoubleClick = vi.fn()
+    render(<ElementView element={createTextElement({ text: 'Double' })} onDoubleClick={onDoubleClick} />)
+
+    fireEvent.doubleClick(screen.getByText('Double'))
+
+    expect(onDoubleClick).toHaveBeenCalledTimes(1)
   })
 
   it('ne met pas de fond à un texte sans fill', () => {

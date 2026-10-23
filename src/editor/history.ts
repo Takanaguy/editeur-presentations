@@ -16,14 +16,24 @@ export interface HistoryState {
   past: Presentation[]
   // Du plus proche au plus lointain : la première entrée est ce qu'un redo restaure.
   future: Presentation[]
+  // Clé de la dernière édition fusionnable, ou null. Tant que la prochaine édition a la
+  // même clé et que rien d'autre n'est arrivé, elle s'ajoute à la même entrée de passé.
+  coalesceKey: string | null
 }
 
-export type HistoryAction = { type: 'history/undo' } | { type: 'history/redo' }
+export type HistoryAction =
+  | { type: 'history/undo' }
+  | { type: 'history/redo' }
+  // Édition normale, mais fusionnée avec la précédente si elle a la même clé : un
+  // sélecteur de couleur émet un événement à chaque mouvement, pour une seule intention.
+  | { type: 'history/coalesced'; key: string; action: EditorAction }
+  // Coupe la chaîne de fusion (par exemple quand le champ perd le focus).
+  | { type: 'history/seal' }
 
 export type AppAction = EditorAction | HistoryAction
 
 export function createHistoryState(presentation?: Presentation): HistoryState {
-  return { editor: createInitialState(presentation), past: [], future: [] }
+  return { editor: createInitialState(presentation), past: [], future: [], coalesceKey: null }
 }
 
 export function canUndo(state: HistoryState): boolean {
@@ -75,6 +85,7 @@ export function historyReducer(state: HistoryState, action: AppAction): HistoryS
         editor: reconcileSelection(state.editor, previous),
         past: state.past.slice(0, -1),
         future: [state.editor.presentation, ...state.future],
+        coalesceKey: null,
       }
     }
     case 'history/redo': {
@@ -84,25 +95,42 @@ export function historyReducer(state: HistoryState, action: AppAction): HistoryS
         editor: reconcileSelection(state.editor, next),
         past: pushCapped(state.past, state.editor.presentation),
         future: rest,
+        coalesceKey: null,
       }
     }
+    case 'history/coalesced':
+      return applyEdit(state, action.action, action.key)
+    case 'history/seal':
+      return state.coalesceKey === null ? state : { ...state, coalesceKey: null }
     default:
-      return applyEdit(state, action)
+      return applyEdit(state, action, null)
   }
 }
 
 // Règle unique : une entrée d'historique naît si et seulement si la présentation
 // a changé de référence. Pas de liste d'actions à maintenir à la main.
-function applyEdit(state: HistoryState, action: EditorAction): HistoryState {
+// `key` non nul : édition fusionnable avec la précédente si elle a la même clé.
+function applyEdit(state: HistoryState, action: EditorAction, key: string | null): HistoryState {
   const next = editorReducer(state.editor, action)
   // Action sans effet : on rend le même objet pour que l'UI ne se redessine pas.
   if (next === state.editor) return state
-  // Sélection seule : on met à jour l'éditeur, pas l'historique.
-  if (next.presentation === state.editor.presentation) return { ...state, editor: next }
+  // Sélection seule : on met à jour l'éditeur, pas l'historique. Changer de sélection
+  // coupe la chaîne de fusion.
+  if (next.presentation === state.editor.presentation) {
+    return { ...state, editor: next, coalesceKey: null }
+  }
+  // Même clé que l'édition d'avant : on garde l'entrée de passé existante (l'état d'avant
+  // la première édition de la chaîne), seul l'état courant avance. La première édition
+  // d'une clé ne fusionne jamais, même si `past` contient d'autres entrées.
+  // La garde `past.length > 0` est défensive : une clé non nulle implique un passé non vide.
+  if (key !== null && state.coalesceKey === key && state.past.length > 0) {
+    return { ...state, editor: next }
+  }
   // Vraie modification : une nouvelle action efface les redo possibles.
   return {
     editor: next,
     past: pushCapped(state.past, state.editor.presentation),
     future: [],
+    coalesceKey: key,
   }
 }

@@ -1,8 +1,15 @@
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import type { ResizeHandle } from '../../editor/geometry'
 import type { GestureMode, GesturePreview } from '../../hooks/useElementGesture'
-import { SLIDE_HEIGHT, SLIDE_WIDTH, type Slide, type SlideElement } from '../../model/types'
+import {
+  SLIDE_HEIGHT,
+  SLIDE_WIDTH,
+  type Slide,
+  type SlideElement,
+  type TextElement,
+} from '../../model/types'
 import { ElementView } from './ElementView'
+import { TextEditor } from './TextEditor'
 
 interface SlideViewProps {
   slide: Slide
@@ -15,6 +22,11 @@ interface SlideViewProps {
   onStartGesture?: (event: ReactPointerEvent, element: SlideElement, mode: GestureMode) => void
   // Brouillon du geste en cours : remplace la géométrie de l'élément concerné.
   preview?: GesturePreview | null
+  // Édition du texte : sans onEditElement, le double clic ne fait rien (vignettes).
+  editingElementId?: string | null
+  onEditElement?: (elementId: string) => void
+  onCommitText?: (elementId: string, text: string) => void
+  onCancelEdit?: () => void
 }
 
 // Épaisseur visuelle voulue du cadre de sélection, en pixels écran.
@@ -43,6 +55,10 @@ export function SlideView({
   onSelectElement,
   onStartGesture,
   preview,
+  editingElementId,
+  onEditElement,
+  onCommitText,
+  onCancelEdit,
 }: SlideViewProps) {
   // Les deux couches (éléments, superposition) ont la même mise à l'échelle.
   const layerStyle = {
@@ -58,6 +74,11 @@ export function SlideView({
   function displayed(element: SlideElement): SlideElement {
     return preview && preview.elementId === element.id ? { ...element, ...preview.bounds } : element
   }
+
+  // Seul un texte s'édite : un id qui vise un autre type d'élément est ignoré.
+  const editedText = slide.elements.find(
+    (e): e is TextElement => e.type === 'text' && e.id === editingElementId,
+  )
 
   const selected = slide.elements.find((e) => e.id === selectedElementId)
   const frame = selected && displayed(selected)
@@ -77,21 +98,35 @@ export function SlideView({
           donc rogne exactement aux bords de la diapositive. */}
       <div className="absolute top-0 left-0 overflow-hidden" style={layerStyle}>
         {/* Ordre du tableau = ordre d'empilement : le dernier est dessiné au-dessus. */}
-        {slide.elements.map((element) => (
-          <ElementView
-            key={element.id}
-            element={displayed(element)}
-            onPointerDown={
-              onSelectElement &&
-              ((event) => {
-                // Empêche le fond de recevoir le clic et de désélectionner aussitôt.
-                event.stopPropagation()
-                onSelectElement(element.id)
-                onStartGesture?.(event, element, 'move')
-              })
-            }
-          />
-        ))}
+        {slide.elements.map((element) =>
+          // Pendant l'édition, la zone de saisie remplace l'élément (le brouillon de geste
+          // ne s'applique pas).
+          editedText && element.id === editedText.id ? (
+            <TextEditor
+              key={element.id}
+              element={editedText}
+              onCommit={(text) => onCommitText?.(editedText.id, text)}
+              onCancel={() => onCancelEdit?.()}
+            />
+          ) : (
+            <ElementView
+              key={element.id}
+              element={displayed(element)}
+              onPointerDown={
+                onSelectElement &&
+                ((event) => {
+                  // Empêche le fond de recevoir le clic et de désélectionner aussitôt.
+                  event.stopPropagation()
+                  onSelectElement(element.id)
+                  onStartGesture?.(event, element, 'move')
+                })
+              }
+              onDoubleClick={
+                onEditElement && element.type === 'text' ? () => onEditElement(element.id) : undefined
+              }
+            />
+          ),
+        )}
       </div>
       {frame && (
         // Couche de superposition, sœur de la précédente et sans overflow-hidden.
@@ -112,8 +147,10 @@ export function SlideView({
               outline: `${SELECTION_OUTLINE_PX / safeScale}px solid ${SELECTION_COLOR}`,
             }}
           />
+          {/* Pas de poignées pendant l'édition du texte, le cadre suffit. */}
           {onStartGesture &&
             selected &&
+            !editedText &&
             HANDLES.map(({ handle, fx, fy, cursor }) => {
               const size = HANDLE_SIZE_PX / safeScale
               return (

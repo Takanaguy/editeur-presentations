@@ -11,6 +11,11 @@ interface SlideCanvasProps {
   // Fournis ensemble pour activer le déplacement et le redimensionnement.
   onMoveElement?: (elementId: string, x: number, y: number) => void
   onResizeElement?: (elementId: string, bounds: Bounds) => void
+  // Édition du texte en ligne, transmise telle quelle à SlideView.
+  editingElementId?: string | null
+  onEditElement?: (elementId: string) => void
+  onCommitText?: (elementId: string, text: string) => void
+  onCancelEdit?: () => void
 }
 
 const noop = () => {}
@@ -23,6 +28,10 @@ export function SlideCanvas({
   onSelectElement,
   onMoveElement,
   onResizeElement,
+  editingElementId,
+  onEditElement,
+  onCommitText,
+  onCancelEdit,
 }: SlideCanvasProps) {
   const { ref, size } = useElementSize<HTMLDivElement>()
   const scale = Math.min(size.width / SLIDE_WIDTH, size.height / SLIDE_HEIGHT)
@@ -47,6 +56,10 @@ export function SlideCanvas({
           onSelectElement={onSelectElement}
           onStartGesture={canEdit ? startGesture : undefined}
           preview={preview}
+          editingElementId={editingElementId}
+          onEditElement={onEditElement}
+          onCommitText={onCommitText}
+          onCancelEdit={onCancelEdit}
         />
       </div>
     </main>

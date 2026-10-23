@@ -1,14 +1,21 @@
-import type { CSSProperties, PointerEventHandler } from 'react'
+import type { CSSProperties, MouseEventHandler, PointerEventHandler } from 'react'
 import type { SlideElement } from '../../model/types'
 
 interface ElementViewProps {
   element: SlideElement
   // Fourni seulement quand l'élément est interactif (zone d'édition, pas vignettes).
   onPointerDown?: PointerEventHandler
+  // Utilisé pour entrer en édition du texte ; ignoré par les rectangles et les images.
+  onDoubleClick?: MouseEventHandler
 }
 
+// Marge intérieure d'un texte (unités logiques) : sans elle, le texte touche les bords
+// de sa boîte. Partagée avec TextEditor pour que l'édition ressemble au rendu.
+export const TEXT_PADDING = 8
+export const TEXT_LINE_HEIGHT = 1.25
+
 // Rendu en lecture seule d'un élément, dans l'espace logique de la diapositive.
-export function ElementView({ element, onPointerDown }: ElementViewProps) {
+export function ElementView({ element, onPointerDown, onDoubleClick }: ElementViewProps) {
   const box: CSSProperties = {
     position: 'absolute',
     left: element.x,
@@ -27,8 +34,12 @@ export function ElementView({ element, onPointerDown }: ElementViewProps) {
       return (
         <div
           onPointerDown={onPointerDown}
+          onDoubleClick={onDoubleClick}
           style={{
             ...box,
+            padding: TEXT_PADDING,
+            boxSizing: 'border-box',
+            lineHeight: TEXT_LINE_HEIGHT,
             fontSize: element.fontSize,
             color: element.color,
             backgroundColor: element.fill ?? undefined,

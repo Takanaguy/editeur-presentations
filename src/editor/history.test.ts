@@ -14,7 +14,7 @@ import {
   type AppAction,
   type HistoryState,
 } from './history'
-import { deepFreeze, makeElementState } from './testHelpers'
+import { deepFreeze, elementById, makeElementState } from './testHelpers'
 import type { EditorState } from './types'
 
 // Enchaîne les actions les unes après les autres.
@@ -246,6 +246,191 @@ describe('limite de l\'historique', () => {
     expect(state.past).toHaveLength(HISTORY_LIMIT)
     expect(state.editor.presentation).toBe(full.editor.presentation)
     expect(canRedo(state)).toBe(false)
+  })
+})
+
+describe('fusion des éditions (history/coalesced)', () => {
+  const colorOf = (state: HistoryState, id: string) => {
+    const element = elementById(state.editor, id)
+    return element?.type === 'rect' ? element.fill : undefined
+  }
+  // Édition fusionnable : change la couleur du rectangle sous la clé donnée.
+  const recolor = (id: string, fill: string, key = 'fill'): AppAction => ({
+    type: 'history/coalesced',
+    key,
+    action: { type: 'element/update', elementId: id, changes: { fill } },
+  })
+  const SEAL: AppAction = { type: 'history/seal' }
+
+  it('part sans clé de fusion', () => {
+    expect(createHistoryState().coalesceKey).toBeNull()
+  })
+
+  it('fusionne N éditions de même clé en une seule entrée', () => {
+    const { history, rect } = makeHistory()
+    const next = runMany(history, 20, (i) => recolor(rect.id, `#0000${(10 + i).toString(16)}`))
+    expect(next.past).toHaveLength(1)
+    expect(next.past[0]).toBe(history.editor.presentation)
+    expect(colorOf(next, rect.id)).toBe('#00001e')
+    expect(next.coalesceKey).toBe('fill')
+  })
+
+  it('une clé différente ne fusionne pas', () => {
+    const { history, rect } = makeHistory()
+    const next = run(history, recolor(rect.id, '#111111', 'a'), recolor(rect.id, '#222222', 'b'))
+    expect(next.past).toHaveLength(2)
+    expect(next.coalesceKey).toBe('b')
+  })
+
+  it('une édition normale intercalée coupe la chaîne', () => {
+    const { history, rect, text } = makeHistory()
+    const interleaved = run(history, recolor(rect.id, '#111111'), {
+      type: 'element/move',
+      elementId: text.id,
+      x: 5,
+      y: 6,
+    })
+    expect(interleaved.coalesceKey).toBeNull()
+
+    const next = run(interleaved, recolor(rect.id, '#222222'))
+    expect(next.past).toHaveLength(3)
+    expect(next.coalesceKey).toBe('fill')
+  })
+
+  it('un changement de sélection intercalé coupe la chaîne', () => {
+    const { history, rect, text } = makeHistory()
+    const selected = run(history, recolor(rect.id, '#111111'), {
+      type: 'element/select',
+      elementId: text.id,
+    })
+    expect(selected.coalesceKey).toBeNull()
+    expect(selected.past).toHaveLength(1)
+
+    const next = run(selected, recolor(rect.id, '#222222'))
+    expect(next.past).toHaveLength(2)
+  })
+
+  it('une sélection sans effet ne coupe pas la chaîne (même référence)', () => {
+    const { history, rect } = makeHistory()
+    const edited = run(history, recolor(rect.id, '#111111'))
+    expect(run(edited, { type: 'element/select', elementId: null })).toBe(edited)
+    expect(run(edited, recolor(rect.id, '#222222')).past).toHaveLength(1)
+  })
+
+  it('seal coupe la chaîne', () => {
+    const { history, rect } = makeHistory()
+    const sealed = run(history, recolor(rect.id, '#111111'), SEAL)
+    expect(sealed.coalesceKey).toBeNull()
+    const next = run(sealed, recolor(rect.id, '#222222'))
+    expect(next.past).toHaveLength(2)
+  })
+
+  it('seal retourne la même référence si la chaîne est déjà coupée', () => {
+    const { history } = makeHistory()
+    expect(run(history, SEAL)).toBe(history)
+  })
+
+  it("undo revient à l'état d'avant la première édition, redo à la dernière valeur", () => {
+    const { history, rect } = makeHistory()
+    const edited = run(
+      history,
+      recolor(rect.id, '#111111'),
+      recolor(rect.id, '#222222'),
+      recolor(rect.id, '#333333'),
+    )
+    const undone = run(edited, UNDO)
+    expect(undone.editor.presentation).toBe(history.editor.presentation)
+    expect(canUndo(undone)).toBe(false)
+    expect(undone.coalesceKey).toBeNull()
+
+    const redone = run(undone, REDO)
+    expect(colorOf(redone, rect.id)).toBe('#333333')
+    expect(redone.editor.presentation).toBe(edited.editor.presentation)
+    expect(redone.coalesceKey).toBeNull()
+  })
+
+  it('la même clé après un undo ne fusionne pas', () => {
+    const { history, rect } = makeHistory()
+    const next = run(
+      history,
+      recolor(rect.id, '#111111'),
+      recolor(rect.id, '#222222'),
+      UNDO,
+      recolor(rect.id, '#333333'),
+    )
+    // Le passé est vide après l'undo : la nouvelle édition crée sa propre entrée.
+    expect(next.past).toHaveLength(1)
+    expect(next.past[0]).toBe(history.editor.presentation)
+    expect(next.future).toEqual([])
+  })
+
+  it('la même clé après un undo ne fusionne pas même si le passé n\'est pas vide', () => {
+    const { history, rect, text } = makeHistory()
+    const base = run(history, { type: 'element/move', elementId: text.id, x: 5, y: 6 })
+    const next = run(base, recolor(rect.id, '#111111'), UNDO, recolor(rect.id, '#222222'))
+    expect(next.past).toHaveLength(2)
+  })
+
+  it("la première édition d'une clé ne fusionne pas même si le passé contient des entrées", () => {
+    const { history, rect, text } = makeHistory()
+    const next = run(
+      history,
+      { type: 'element/move', elementId: text.id, x: 5, y: 6 },
+      { type: 'element/move', elementId: text.id, x: 7, y: 8 },
+      recolor(rect.id, '#111111'),
+    )
+    expect(next.past).toHaveLength(3)
+  })
+
+  it('vide le futur à la première édition de la chaîne', () => {
+    const { history, rect, text } = makeHistory()
+    const undone = run(history, { type: 'element/move', elementId: text.id, x: 5, y: 6 }, UNDO)
+    expect(canRedo(undone)).toBe(true)
+    const next = run(undone, recolor(rect.id, '#111111'), recolor(rect.id, '#222222'))
+    expect(next.future).toEqual([])
+    expect(next.past).toHaveLength(1)
+  })
+
+  it('une édition fusionnable sans effet retourne la même référence', () => {
+    const { history, rect } = makeHistory()
+    expect(run(history, recolor(rect.id, rect.fill))).toBe(history)
+    expect(run(history, recolor('inconnu', '#111111'))).toBe(history)
+
+    const edited = run(history, recolor(rect.id, '#111111'))
+    expect(run(edited, recolor(rect.id, '#111111'))).toBe(edited)
+  })
+
+  it('respecte la limite de HISTORY_LIMIT avec des entrées fusionnées', () => {
+    const { history, rect, text } = makeHistory()
+    let state = history
+    // Chaque tour : un déplacement, puis 5 recolorations qui forment une seule entrée.
+    for (let i = 1; i <= 40; i++) {
+      state = historyReducer(state, { type: 'element/move', elementId: text.id, x: i, y: 0 })
+      for (let j = 0; j < 5; j++) {
+        state = historyReducer(state, recolor(rect.id, `#${i + 100}0${j}00`.slice(0, 7)))
+      }
+    }
+    expect(state.past).toHaveLength(HISTORY_LIMIT)
+  })
+
+  it('ne modifie jamais un état gelé en profondeur', () => {
+    const { history, rect } = makeHistory()
+    const frozen = deepFreeze(history)
+    const snapshot = structuredClone(frozen)
+
+    expect(() => {
+      const edited = run(
+        frozen,
+        recolor(rect.id, '#111111'),
+        recolor(rect.id, '#222222'),
+        SEAL,
+        recolor(rect.id, '#333333'),
+      )
+      deepFreeze(edited)
+      run(run(edited, UNDO, REDO), SEAL)
+    }).not.toThrow()
+
+    expect(frozen).toEqual(snapshot)
   })
 })
 

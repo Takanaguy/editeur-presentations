@@ -329,3 +329,117 @@ describe('SlideView : gestes', () => {
     expect(screen.getByText('Premier plan arrière')).not.toHaveStyle({ touchAction: 'none' })
   })
 })
+
+describe('SlideView : édition du texte', () => {
+  const slide = makeSlide()
+  const [text, rect] = slide.elements
+  const rectNode = () => document.querySelector('[style*="background-color: rgb(171, 205, 239)"]')
+
+  it('le double clic sur un texte appelle onEditElement avec son id', () => {
+    const onEditElement = vi.fn()
+    render(<SlideView slide={slide} scale={1} onEditElement={onEditElement} />)
+
+    fireEvent.doubleClick(screen.getByText('Premier plan arrière'))
+
+    expect(onEditElement).toHaveBeenCalledTimes(1)
+    expect(onEditElement).toHaveBeenCalledWith(text?.id)
+  })
+
+  it("le double clic sur un rectangle ou une image n'appelle pas onEditElement", () => {
+    const onEditElement = vi.fn()
+    render(<SlideView slide={slide} scale={1} onEditElement={onEditElement} />)
+
+    fireEvent.doubleClick(rectNode() as Element)
+    fireEvent.doubleClick(screen.getByRole('img', { name: 'Illustration' }))
+
+    expect(onEditElement).not.toHaveBeenCalled()
+  })
+
+  it('sans onEditElement (vignettes), le double clic ne fait rien', () => {
+    render(<SlideView slide={slide} scale={1} />)
+
+    expect(() => fireEvent.doubleClick(screen.getByText('Premier plan arrière'))).not.toThrow()
+  })
+
+  it("en édition, un textarea remplace le texte et aucune poignée n'est dessinée", () => {
+    render(
+      <SlideView
+        slide={slide}
+        scale={1}
+        selectedElementId={text?.id}
+        onSelectElement={() => {}}
+        onStartGesture={() => {}}
+        editingElementId={text?.id}
+      />,
+    )
+
+    const textarea = screen.getByRole('textbox', { name: 'Modifier le texte' })
+    expect(textarea).toHaveValue('Premier plan arrière')
+    expect(document.querySelectorAll('[data-handle]')).toHaveLength(0)
+    // Le cadre reste affiché, et les autres éléments aussi.
+    expect(screen.getByTestId('selection-frame')).toBeInTheDocument()
+    expect(screen.getByText('Dernier au premier plan')).toBeInTheDocument()
+  })
+
+  it("le textarea garde sa place dans l'ordre d'empilement", () => {
+    const { container } = render(<SlideView slide={slide} scale={1} editingElementId={text?.id} />)
+
+    const layer = container.firstElementChild?.firstElementChild
+    expect(layer?.children[0]?.tagName).toBe('TEXTAREA')
+    // Les 3 autres éléments, plus le texte d'aide masqué qui suit le textarea.
+    expect(layer?.children[1]?.tagName).toBe('SPAN')
+    expect(layer?.children).toHaveLength(5)
+  })
+
+  it("ignore le brouillon de geste pendant l'édition", () => {
+    render(
+      <SlideView
+        slide={slide}
+        scale={1}
+        editingElementId={text?.id}
+        preview={{ elementId: text?.id ?? '', bounds: { x: 1, y: 2, width: 30, height: 40 } }}
+      />,
+    )
+
+    expect(screen.getByRole('textbox')).toHaveStyle({
+      left: `${text?.x}px`,
+      top: `${text?.y}px`,
+    })
+  })
+
+  it("un id d'édition qui vise un rectangle n'ouvre aucun éditeur", () => {
+    render(<SlideView slide={slide} scale={1} editingElementId={rect?.id} />)
+
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+
+  it("transmet le texte validé et l'annulation", () => {
+    const onCommitText = vi.fn()
+    const onCancelEdit = vi.fn()
+    const { rerender } = render(
+      <SlideView
+        slide={slide}
+        scale={1}
+        editingElementId={text?.id}
+        onCommitText={onCommitText}
+        onCancelEdit={onCancelEdit}
+      />,
+    )
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Nouveau' } })
+    fireEvent.blur(screen.getByRole('textbox'))
+    expect(onCommitText).toHaveBeenCalledWith(text?.id, 'Nouveau')
+
+    rerender(
+      <SlideView
+        slide={slide}
+        scale={1}
+        editingElementId={slide.elements[2]?.id}
+        onCommitText={onCommitText}
+        onCancelEdit={onCancelEdit}
+      />,
+    )
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' })
+    expect(onCancelEdit).toHaveBeenCalledTimes(1)
+  })
+})
