@@ -1,24 +1,28 @@
-import type { CSSProperties } from 'react'
+import type { CSSProperties, PointerEventHandler } from 'react'
 import type { SlideElement } from '../../model/types'
 
 interface ElementViewProps {
   element: SlideElement
+  // Fourni seulement quand l'élément est interactif (zone d'édition, pas vignettes).
+  onPointerDown?: PointerEventHandler
 }
 
 // Rendu en lecture seule d'un élément, dans l'espace logique de la diapositive.
-export function ElementView({ element }: ElementViewProps) {
+export function ElementView({ element, onPointerDown }: ElementViewProps) {
   const box: CSSProperties = {
     position: 'absolute',
     left: element.x,
     top: element.y,
     width: element.width,
     height: element.height,
+    cursor: onPointerDown ? 'move' : undefined,
   }
 
   switch (element.type) {
     case 'text':
       return (
         <div
+          onPointerDown={onPointerDown}
           style={{
             ...box,
             fontSize: element.fontSize,
@@ -34,13 +38,14 @@ export function ElementView({ element }: ElementViewProps) {
         </div>
       )
     case 'rect':
-      return <div style={{ ...box, backgroundColor: element.fill }} />
+      return <div onPointerDown={onPointerDown} style={{ ...box, backgroundColor: element.fill }} />
     case 'image':
       return (
         <img
           src={element.src}
           alt={element.alt}
           draggable={false}
+          onPointerDown={onPointerDown}
           style={{ ...box, objectFit: 'contain', userSelect: 'none' }}
         />
       )

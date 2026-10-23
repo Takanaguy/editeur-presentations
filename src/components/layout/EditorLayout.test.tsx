@@ -2,14 +2,12 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { EditorProvider } from '../../hooks/EditorProvider'
 import { useEditor } from '../../hooks/useEditor'
-import { createDemoPresentation } from '../../model/demo'
-import { createSlide, createTextElement } from '../../model/factories'
-import type { Presentation } from '../../model/types'
+import { createThreeSlidePresentation } from '../../test/fixtures'
 import { EditorLayout } from './EditorLayout'
 
 function renderLayout() {
   return render(
-    <EditorProvider presentation={createDemoPresentation()}>
+    <EditorProvider presentation={createThreeSlidePresentation()}>
       <EditorLayout />
     </EditorProvider>,
   )
@@ -20,7 +18,7 @@ describe('EditorLayout', () => {
     renderLayout()
 
     expect(
-      screen.getByRole('heading', { level: 1, name: 'Présentation de démonstration' }),
+      screen.getByRole('heading', { level: 1, name: 'Test' }),
     ).toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: 'Vignettes des diapositives' })).toBeInTheDocument()
     expect(screen.getByRole('main', { name: 'Zone d\'édition' })).toBeInTheDocument()
@@ -35,8 +33,8 @@ describe('EditorLayout', () => {
       'true',
     )
     const main = screen.getByRole('main', { name: 'Zone d\'édition' })
-    expect(within(main).getByText('Diapositive 1 : titre')).toBeInTheDocument()
-    expect(within(main).queryByText('Diapositive 2 : titre')).not.toBeInTheDocument()
+    expect(within(main).getByText('Alpha')).toBeInTheDocument()
+    expect(within(main).queryByText('Bravo')).not.toBeInTheDocument()
   })
 
   it('affiche la diapositive cliquée dans la zone centrale', async () => {
@@ -45,8 +43,8 @@ describe('EditorLayout', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Diapositive 2' }))
 
     const main = screen.getByRole('main', { name: 'Zone d\'édition' })
-    expect(within(main).getByText('Diapositive 2 : titre')).toBeInTheDocument()
-    expect(within(main).queryByText('Diapositive 1 : titre')).not.toBeInTheDocument()
+    expect(within(main).getByText('Bravo')).toBeInTheDocument()
+    expect(within(main).queryByText('Alpha')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Diapositive 2' })).toHaveAttribute(
       'aria-current',
       'true',
@@ -63,20 +61,6 @@ describe('EditorLayout', () => {
 })
 
 describe('EditorLayout : gestion des diapositives', () => {
-  // Trois diapositives avec des textes distincts, pour repérer chacune par son contenu.
-  function renderThree() {
-    const slides = ['Alpha', 'Bravo', 'Charlie'].map((text) => ({
-      ...createSlide(),
-      elements: [createTextElement({ text })],
-    }))
-    const presentation: Presentation = { version: 1, title: 'Test', slides }
-    render(
-      <EditorProvider presentation={presentation}>
-        <EditorLayout />
-      </EditorProvider>,
-    )
-  }
-
   const thumbnail = (number: number) => screen.getByRole('button', { name: `Diapositive ${number}` })
   const main = () => screen.getByRole('main', { name: 'Zone d\'édition' })
   const click = (name: string) => userEvent.click(screen.getByRole('button', { name }))
@@ -90,7 +74,7 @@ describe('EditorLayout : gestion des diapositives', () => {
   }
 
   it('ajoute une diapositive vide après la sélectionnée et la sélectionne', async () => {
-    renderThree()
+    renderLayout()
     await userEvent.click(thumbnail(1))
 
     await click('Nouvelle diapositive')
@@ -102,7 +86,7 @@ describe('EditorLayout : gestion des diapositives', () => {
   })
 
   it('duplique la diapositive juste après et sélectionne la copie', async () => {
-    renderThree()
+    renderLayout()
     await userEvent.click(thumbnail(2))
 
     await click('Dupliquer la diapositive')
@@ -114,7 +98,7 @@ describe('EditorLayout : gestion des diapositives', () => {
   })
 
   it('supprime la diapositive sélectionnée et sélectionne sa voisine', async () => {
-    renderThree()
+    renderLayout()
     await userEvent.click(thumbnail(2))
 
     await click('Supprimer la diapositive')
@@ -126,7 +110,7 @@ describe('EditorLayout : gestion des diapositives', () => {
   })
 
   it('désactive Supprimer quand il ne reste qu\'une diapositive', async () => {
-    renderThree()
+    renderLayout()
     const del = screen.getByRole('button', { name: 'Supprimer la diapositive' })
     expect(del).toBeEnabled()
 
@@ -138,7 +122,7 @@ describe('EditorLayout : gestion des diapositives', () => {
   })
 
   it('monte la diapositive et garde la sélection dessus', async () => {
-    renderThree()
+    renderLayout()
     await userEvent.click(thumbnail(2))
 
     await click('Monter la diapositive')
@@ -149,7 +133,7 @@ describe('EditorLayout : gestion des diapositives', () => {
   })
 
   it('descend la diapositive et garde la sélection dessus', async () => {
-    renderThree()
+    renderLayout()
     await userEvent.click(thumbnail(2))
 
     await click('Descendre la diapositive')
@@ -160,7 +144,7 @@ describe('EditorLayout : gestion des diapositives', () => {
   })
 
   it('désactive Monter sur la première et Descendre sur la dernière', async () => {
-    renderThree()
+    renderLayout()
     const up = screen.getByRole('button', { name: 'Monter la diapositive' })
     const down = screen.getByRole('button', { name: 'Descendre la diapositive' })
 

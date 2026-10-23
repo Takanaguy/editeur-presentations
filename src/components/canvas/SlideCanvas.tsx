@@ -4,11 +4,13 @@ import { SlideView } from './SlideView'
 
 interface SlideCanvasProps {
   slide: Slide
+  selectedElementId?: string | null
+  onSelectElement?: (elementId: string | null) => void
 }
 
 // Zone centrale : affiche la diapositive à la plus grande taille qui tient
 // entièrement dans l'espace disponible, en gardant le 16:9.
-export function SlideCanvas({ slide }: SlideCanvasProps) {
+export function SlideCanvas({ slide, selectedElementId, onSelectElement }: SlideCanvasProps) {
   const { ref, size } = useElementSize<HTMLDivElement>()
   const scale = Math.min(size.width / SLIDE_WIDTH, size.height / SLIDE_HEIGHT)
 
@@ -19,7 +21,12 @@ export function SlideCanvas({ slide }: SlideCanvasProps) {
         ref={ref}
         className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden"
       >
-        <SlideView slide={slide} scale={scale} />
+        <SlideView
+          slide={slide}
+          scale={scale}
+          selectedElementId={selectedElementId}
+          onSelectElement={onSelectElement}
+        />
       </div>
     </main>
   )
