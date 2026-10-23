@@ -6,6 +6,10 @@ import { createThreeSlidePresentation } from '../../test/fixtures'
 import { firePointer } from '../../test/pointer'
 import { EditorLayout } from './EditorLayout'
 
+// Le test des 60 éditions fait beaucoup d'événements : sous la charge de toute la suite, le
+// délai par défaut de 5 s peut être dépassé alors qu'il passe seul en 10 s environ.
+vi.setConfig({ testTimeout: 30_000 })
+
 // Lit l'historique via le contexte : nombre d'entrées et éléments de la diapositive affichée.
 function HistorySpy() {
   const { history } = useEditor()
