@@ -160,7 +160,7 @@ export function PresentationMode({ slides, startIndex, onExit }: PresentationMod
         const target = navigationTarget('ArrowRight', false, currentIndex(), count)
         if (target?.type === 'go') goTo(target.index)
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black outline-none select-none"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black outline-none select-none print:hidden"
     >
       {slide && <SlideView slide={slide} scale={scale} />}
       <p aria-live="polite" className="sr-only">

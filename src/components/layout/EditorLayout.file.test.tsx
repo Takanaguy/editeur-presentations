@@ -49,6 +49,18 @@ function makeImported(): Presentation {
   return { version: 1, title: 'Importée', slides }
 }
 
+// Version synchrone pour les tests à minuteurs factices (userEvent s'y bloque).
+function exportJsonSync() {
+  fireEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: /^Fichier JSON/ }))
+}
+
+// Exporter est un menu : on l'ouvre puis on choisit le format JSON.
+async function exportJson() {
+  await userEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+  await userEvent.click(screen.getByRole('menuitem', { name: /^Fichier JSON/ }))
+}
+
 function jsonFile(text: string, name = 'import.json'): File {
   return new File([text], name, { type: 'application/json' })
 }
@@ -85,7 +97,7 @@ describe('EditorLayout : export', () => {
       clicks.push(this)
     })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+    await exportJson()
 
     expect(exported).toHaveLength(1)
     expect(await exported[0]?.text()).toBe(serializePresentation(presentation))
@@ -97,7 +109,7 @@ describe('EditorLayout : export', () => {
     renderLayout()
     const before = content()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+    await exportJson()
 
     expect(content()).toBe(before)
     expect(pastCount()).toBe(0)
@@ -107,7 +119,7 @@ describe('EditorLayout : export', () => {
     const slide = { ...createSlide(), elements: [createTextElement({ text: 'a'.repeat(10001) })] }
     renderLayout({ version: 1, title: 'Trop long', slides: [slide] })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+    await exportJson()
 
     expect(exported).toHaveLength(0)
     const alert = screen.getByRole('alert')
@@ -121,7 +133,7 @@ describe('EditorLayout : export', () => {
       throw new Error('indisponible')
     })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+    await exportJson()
 
     expect(screen.getByRole('alert')).toHaveTextContent('Export impossible')
     expect(screen.getByRole('status')).toBeEmptyDOMElement()
@@ -294,7 +306,7 @@ describe('EditorLayout : aller-retour', () => {
   it('exporter puis importer la même présentation redonne le même contenu', async () => {
     renderLayout()
     const original = content()
-    await userEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+    await exportJson()
     const text = (await exported[0]?.text()) ?? ''
     // On modifie d'abord la présentation, pour prouver que l'import la remet bien.
     await userEvent.click(screen.getByRole('button', { name: 'Nouvelle diapositive' }))
@@ -376,7 +388,7 @@ describe('EditorLayout : titre', () => {
       clicks.push(this)
     })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+    await exportJson()
 
     expect(clicks[0]?.download).toBe('ete-2026.json')
   })
@@ -387,7 +399,7 @@ describe('EditorLayout : bandeau de message', () => {
     vi.useFakeTimers()
     renderLayout()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+    exportJsonSync()
     expect(screen.getByRole('status')).not.toBeEmptyDOMElement()
 
     act(() => {
@@ -405,11 +417,11 @@ describe('EditorLayout : bandeau de message', () => {
     vi.useFakeTimers()
     renderLayout()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+    exportJsonSync()
     act(() => {
       vi.advanceTimersByTime(4000)
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+    exportJsonSync()
     act(() => {
       vi.advanceTimersByTime(4000)
     })
@@ -426,7 +438,7 @@ describe('EditorLayout : bandeau de message', () => {
     const slide = { ...createSlide(), elements: [createTextElement({ text: 'a'.repeat(10001) })] }
     renderLayout({ version: 1, title: 'T', slides: [slide] })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+    exportJsonSync()
     act(() => {
       vi.advanceTimersByTime(60_000)
     })
@@ -436,7 +448,7 @@ describe('EditorLayout : bandeau de message', () => {
 
   it('le bouton Fermer ferme le message et rend le focus au bouton Exporter', async () => {
     renderLayout()
-    await userEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+    await exportJson()
 
     await userEvent.click(screen.getByRole('button', { name: 'Fermer le message' }))
 
@@ -459,7 +471,7 @@ describe('EditorLayout : bandeau de message', () => {
     renderLayout()
     chooseFile(jsonFile('pas du json'))
     await waitFor(() => expect(screen.getByRole('alert')).not.toBeEmptyDOMElement())
-    await userEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+    await exportJson()
 
     await userEvent.click(screen.getByRole('button', { name: 'Fermer le message' }))
 
@@ -471,7 +483,7 @@ describe('EditorLayout : bandeau de message', () => {
     chooseFile(jsonFile('pas du json'))
     await waitFor(() => expect(screen.getByRole('alert')).not.toBeEmptyDOMElement())
 
-    await userEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+    await exportJson()
 
     expect(screen.getByRole('alert')).toBeEmptyDOMElement()
     expect(screen.getByRole('status')).not.toBeEmptyDOMElement()

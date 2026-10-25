@@ -1,6 +1,6 @@
 # Éditeur de présentations
 
-Éditeur de présentations dans le navigateur, dans l'esprit de PowerPoint : on compose des diapositives avec du texte, des rectangles et des images, on les réorganise, on les présente en plein écran, et on les enregistre dans un fichier JSON. Tout tourne côté client, sans serveur ni compte.
+Éditeur de présentations dans le navigateur, dans l'esprit de PowerPoint : on compose des diapositives avec du texte, des rectangles et des images, on les réorganise, on les présente en plein écran, et on les enregistre dans un fichier JSON ou on les exporte en PDF. Tout tourne côté client, sans serveur ni compte.
 
 Ce projet fait partie du dépôt du portfolio de Tanguy Horard, dans le sous-dossier `slide-editor/`. Il est indépendant du portfolio (son propre `package.json`).
 
@@ -41,11 +41,12 @@ Ce projet fait partie du dépôt du portfolio de Tanguy Horard, dans le sous-dos
 - Annuler / rétablir, sur 50 actions.
 - Mode présentation : diapositive plein écran, navigation au clavier ou au clic.
 - Export de la présentation en fichier JSON, import d'un fichier JSON (validé, annulable).
+- Export en PDF (via l'impression du navigateur : choisir « Enregistrer au format PDF »).
 - Titre de la présentation éditable (il donne aussi le nom du fichier exporté).
 
 ## Raccourcis clavier
 
-Les raccourcis de l'éditeur sont lus dans `src/hooks/useKeyboardShortcuts.ts`. Sur macOS, Cmd remplace Ctrl. Ils sont suspendus en mode présentation et ne volent pas les touches quand on tape dans un champ de texte (le navigateur garde alors son propre annuler).
+Les raccourcis de l'éditeur sont lus dans `src/hooks/useKeyboardShortcuts.ts`. Sur macOS, Cmd remplace Ctrl. Ils sont suspendus en mode présentation, pendant l'impression du PDF, et ne volent pas les touches quand on tape dans un champ de texte (le navigateur garde alors son propre annuler).
 
 | Touche | Action |
 | --- | --- |
@@ -102,10 +103,10 @@ Depuis `slide-editor/` :
 
 | Commande | Rôle | Résultat constaté à la rédaction |
 | --- | --- | --- |
-| `npm test` | Lance tous les tests une fois (`vitest run`) | 47 fichiers, 1284 tests, tous passent |
+| `npm test` | Lance tous les tests une fois (`vitest run`) | 51 fichiers, 1343 tests, tous passent |
 | `npm run test:watch` | Relance les tests à chaque modification | (mode interactif, non lancé pour ce relevé) |
 | `npm run lint` | ESLint sur tout le projet | aucune erreur ni avertissement |
-| `npm run build` | Vérification des types (`tsc -b`) puis build de production dans `dist/` | réussi, 58 modules, JavaScript d'environ 276 ko (85 ko compressé en gzip) |
+| `npm run build` | Vérification des types (`tsc -b`) puis build de production dans `dist/` | réussi, 61 modules, JavaScript d'environ 280 ko (86 ko compressé en gzip) |
 | `npm run preview` | Sert le contenu de `dist/` pour le vérifier avant déploiement | (serveur, non lancé pour ce relevé ; la commande est présente dans `package.json`) |
 
 `npm run dev` et `npm run preview` sont des serveurs : leur présence a été vérifiée dans `package.json`, pas leur exécution.
@@ -144,9 +145,10 @@ slide-editor/
     │   ├── layout/             EditorLayout (seul composant relié au store), bandeau, titre
     │   ├── canvas/             SlideView, SlideCanvas, ElementView, TextEditor
     │   ├── thumbnails/         liste de vignettes et boutons de diapositives
-    │   ├── toolbar/            ajout d'éléments, fichier, annuler / rétablir
+    │   ├── toolbar/            ajout d'éléments, fichier (menu Exporter), annuler / rétablir
     │   ├── properties/         panneau de propriétés
-    │   └── presentation/       mode présentation et navigation
+    │   ├── presentation/       mode présentation et navigation
+    │   └── print/              vue d'impression (une page par diapositive, export PDF)
     └── test/               aides de test partagées (fixtures, événements de pointeur, disposition simulée)
 ```
 
@@ -238,16 +240,17 @@ Le fichier `vercel.json` à la racine du dépôt concerne le portfolio. Il n'est
 
 ## Hors périmètre volontaire
 
-Ces points ne sont pas dans le projet, par choix de périmètre :
+Ces points ne sont pas dans le projet, par choix de périmètre (l'export PDF en faisait partie au départ : le périmètre a changé à la demande du propriétaire du projet, voir `docs/DECISIONS.md`) :
 - animations des éléments et transitions entre diapositives
 - thèmes et modèles de mise en page
 - collaboration en temps réel
-- export PDF ou PPTX
 - sauvegarde automatique (le travail n'est enregistré que par l'export JSON)
 - comptes utilisateurs
 
 ## Limites connues
 
+- Ctrl+P (impression native du navigateur) n'imprime rien : utiliser Exporter puis PDF.
+- **Le rendu d'impression du PDF n'a pas pu être vérifié de façon automatique** : jsdom n'imprime pas. Les tests couvrent le déclenchement, pas la pagination ni les couleurs. À essayer à la main dans un navigateur.
 - **Rien n'est conservé si on recharge la page** : l'état vit en mémoire. Il faut exporter en JSON pour garder son travail.
 - **Pas d'adaptation au mobile ni aux petits écrans** : la mise en page à trois colonnes a des largeurs fixes pour les panneaux latéraux, et l'éditeur n'est pas responsive. Le glisser des vignettes est désactivé au toucher (les boutons Monter / Descendre servent d'alternative).
 - **Le clavier ne couvre pas tout** : les flèches déplacent l'élément sélectionné, mais le redimensionnement ne se fait qu'à la souris (les poignées ne sont pas atteignables au clavier). Les lecteurs d'écran ne reçoivent pas d'annonce après un annuler / rétablir.

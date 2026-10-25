@@ -20,6 +20,7 @@ import { MAX_ELEMENTS_PER_SLIDE, MAX_SLIDES } from '../../model/limits'
 import type { Slide, SlideElement } from '../../model/types'
 import { SlideCanvas } from '../canvas/SlideCanvas'
 import { PresentationMode } from '../presentation/PresentationMode'
+import { PrintView } from '../print/PrintView'
 import { PropertiesPanel } from '../properties/PropertiesPanel'
 import { ElementToolbar } from '../toolbar/ElementToolbar'
 import { FileActions } from '../toolbar/FileActions'
@@ -32,6 +33,13 @@ import { TitleField } from './TitleField'
 // Durée d'affichage d'un message de succès avant fermeture automatique.
 const SUCCESS_NOTICE_MS = 5000
 
+// Attente maximale du décodage des images avant d'imprimer quand même.
+const IMAGE_DECODE_CAP_MS = 5000
+// Si afterprint n'arrive jamais, la vue d'impression est démontée après ce délai.
+const PRINT_FALLBACK_MS = 60_000
+const PRINT_STARTED_MESSAGE =
+  'La fenêtre d\'impression s\'ouvre : choisissez « Enregistrer au format PDF » comme imprimante.'
+
 // Seul composant connecté au store : il lit l'état et passe des props aux autres.
 export function EditorLayout() {
   const { history, dispatch } = useEditor()
@@ -42,6 +50,11 @@ export function EditorLayout() {
   // Mode présentation ouvert : état d'interface, hors historique.
   const [presenting, setPresenting] = useState(false)
   const presentButtonRef = useRef<HTMLButtonElement>(null)
+  // Diapositives figées au clic sur PDF (null = pas d'impression en cours) : état d'interface,
+  // hors historique. Les diapositives sont immuables, la référence suffit comme instantané.
+  const [printSlides, setPrintSlides] = useState<Slide[] | null>(null)
+  const printing = printSlides !== null
+  const printViewRef = useRef<HTMLDivElement>(null)
   // Message d'export ou d'import sous l'en-tête : un état d'interface, hors historique.
   const [notice, setNotice] = useState<Notice | null>(null)
   // Titre en cours de saisie. Le store garde le titre nettoyé (espaces retirés) : sans ce
@@ -155,7 +168,7 @@ export function EditorLayout() {
   }
 
   function exportPresentation() {
-    if (presenting) return
+    if (presenting || printing) return
     lastFileAction.current = 'export'
     const result = prepareExport(presentation)
     if (!result.ok) {
@@ -173,6 +186,16 @@ export function EditorLayout() {
     }
   }
 
+  // Fige les diapositives et monte la vue d'impression ; l'effet plus bas attend les images
+  // puis ouvre l'impression. Tant que printSlides n'est pas null, un second export est ignoré :
+  // c'est ce qui garantit un seul appel à print() par export.
+  function exportPdf() {
+    if (presenting || printing) return
+    lastFileAction.current = 'export'
+    setNotice(null)
+    setPrintSlides(presentation.slides)
+  }
+
   function closeNotice() {
     setNotice(null)
     const button = lastFileAction.current === 'export' ? exportButtonRef : importButtonRef
@@ -181,6 +204,15 @@ export function EditorLayout() {
 
   async function importFile(file: File) {
     if (presenting) return
+    // Changer la présentation pendant l'impression n'a pas de sens : on refuse l'import.
+    if (printing) {
+      setNotice({
+        kind: 'error',
+        title: 'Import impossible',
+        messages: ["Import impossible pendant l'impression."],
+      })
+      return
+    }
     lastFileAction.current = 'import'
     const token = ++importToken.current
     const failure = (messages: string[]): Notice => ({
@@ -246,8 +278,9 @@ export function EditorLayout() {
     onNudge: nudgeSelection,
     // Au relâchement, l'appui suivant formera une nouvelle entrée d'historique.
     onNudgeEnd: () => dispatch({ type: 'history/seal' }),
-    // Pendant la présentation, Suppr, Retour arrière et Ctrl+Z ne doivent rien toucher.
-    enabled: !presenting,
+    // Pendant la présentation ou l'impression, Suppr, Retour arrière et Ctrl+Z ne doivent
+    // rien toucher.
+    enabled: !presenting && !printing,
   })
 
   // Rend le focus au bouton Présenter à la sortie, pas au premier rendu.
@@ -264,6 +297,65 @@ export function EditorLayout() {
     const timer = setTimeout(() => setNotice(null), SUCCESS_NOTICE_MS)
     return () => clearTimeout(timer)
   }, [notice])
+
+  // Impression : attend les images de la vue d'impression, ouvre la fenêtre d'impression, puis
+  // démonte la vue à la fin (afterprint) ou après un délai de secours. Tout vit dans un seul
+  // effet, qui ne dépend que des diapositives figées : il repart donc à chaque export et pas
+  // autrement. Son nettoyage retire minuteurs et écouteur, y compris au démontage. En
+  // StrictMode (développement) l'effet est annulé puis relancé : la première attente est
+  // abandonnée par `cancelled`, seule la seconde arrive jusqu'à print().
+  useEffect(() => {
+    if (!printSlides) return
+    let cancelled = false
+    let capTimer: ReturnType<typeof setTimeout> | undefined
+    let fallbackTimer: ReturnType<typeof setTimeout> | undefined
+
+    function finish() {
+      window.removeEventListener('afterprint', finish)
+      clearTimeout(fallbackTimer)
+      setPrintSlides(null)
+    }
+
+    function startPrint() {
+      // Installés avant print() : certains navigateurs bloquent dedans et envoient afterprint
+      // avant de rendre la main.
+      window.addEventListener('afterprint', finish)
+      // Repli : certains navigateurs n'envoient jamais afterprint.
+      fallbackTimer = setTimeout(finish, PRINT_FALLBACK_MS)
+      setNotice({ kind: 'success', title: PRINT_STARTED_MESSAGE, messages: [] })
+      try {
+        if (typeof window.print !== 'function') throw new Error('print indisponible')
+        window.print()
+      } catch {
+        finish()
+        setNotice({
+          kind: 'error',
+          title: 'Export impossible',
+          messages: ["L'impression n'est pas disponible dans ce navigateur."],
+        })
+      }
+    }
+
+    const images = Array.from(printViewRef.current?.querySelectorAll('img') ?? [])
+    // Une image cassée ne doit pas bloquer l'export : l'erreur de decode() est ignorée.
+    const decoded = Promise.all(
+      images.map((img) => (typeof img.decode === 'function' ? img.decode() : Promise.resolve()).catch(() => {})),
+    )
+    const cap = new Promise<void>((resolve) => {
+      capTimer = setTimeout(resolve, IMAGE_DECODE_CAP_MS)
+    })
+    void Promise.race([decoded, cap]).then(() => {
+      clearTimeout(capTimer)
+      if (!cancelled) startPrint()
+    })
+
+    return () => {
+      cancelled = true
+      clearTimeout(capTimer)
+      clearTimeout(fallbackTimer)
+      window.removeEventListener('afterprint', finish)
+    }
+  }, [printSlides])
 
   // Mesure l'image puis l'ajoute. Toute erreur d'import est affichée dans la barre d'outils.
   async function addImage(getSrc: () => Promise<string>, alt: string) {
@@ -299,7 +391,10 @@ export function EditorLayout() {
     <>
       {/* inert pendant la présentation : rien derrière n'est focalisable ni cliquable, et les
           lecteurs d'écran l'ignorent. Le mode présentation est son frère, donc non concerné. */}
-      <div className="flex h-screen flex-col bg-slate-50 text-slate-900" inert={presenting}>
+      <div
+        className="flex h-screen flex-col bg-slate-50 text-slate-900 print:hidden"
+        inert={presenting}
+      >
         <header className="flex h-10 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4">
           <div className="flex items-center gap-3">
             {/* Le champ ci-dessous est le titre visible ; ce titre de page reste pour la structure. */}
@@ -318,9 +413,10 @@ export function EditorLayout() {
           </div>
           <div className="flex items-center gap-3">
             <FileActions
-              onExport={exportPresentation}
+              onExportJson={exportPresentation}
+              onExportPdf={exportPdf}
               onImportFile={(file) => void importFile(file)}
-              disabled={presenting}
+              disabled={presenting || printing}
               exportRef={exportButtonRef}
               importRef={importButtonRef}
             />
@@ -410,6 +506,7 @@ export function EditorLayout() {
           onExit={() => setPresenting(false)}
         />
       )}
+      {printSlides && <PrintView slides={printSlides} containerRef={printViewRef} />}
     </>
   )
 }

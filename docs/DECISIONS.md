@@ -144,7 +144,7 @@ En plein écran, le navigateur consomme Échap pour sortir du plein écran : l'a
 
 **Contexte.** Le projet doit pouvoir changer sans régression, et chaque comportement doit être démontré.
 
-**Décision.** Vitest, React Testing Library et jsdom. À la rédaction : 47 fichiers de test, 1284 tests, tous verts. Principes :
+**Décision.** Vitest, React Testing Library et jsdom. À la rédaction : 51 fichiers de test, 1343 tests, tous verts. Principes :
 - **La logique pure est testée sans React** : `model`, `editor`, `io`, `navigation.ts`. Ce sont les tests les plus nombreux et les plus rapides.
 - **Des aides partagées** : `firePointer` (`src/test/pointer.ts`) envoie des événements de pointeur ; `mockThumbnailLayout` (`src/test/thumbnailLayout.ts`) simule la disposition de la liste de vignettes, car jsdom renvoie des rectangles vides ; `HistorySpy`, un petit composant défini dans les tests de `EditorLayout`, lit `history.past.length` pour prouver qu'une action crée exactement le nombre voulu d'entrées d'historique ; `deepFreeze` détecte les mutations.
 - **Tests par mutation à la main des gardes critiques** : pour une garde importante (par exemple le test de l'id de diapositive après un `await`), on la retire ou on la casse dans le code, et on vérifie qu'au moins un test échoue. Un test qui reste vert sans la garde ne prouve rien. Cette pratique n'est pas outillée (il n'y a pas d'outil de mutation dans le projet).
@@ -153,6 +153,16 @@ En plein écran, le navigateur consomme Échap pour sortir du plein écran : l'a
 **Pourquoi.** Tester la logique sans React rend les tests rapides et précis ; les tests de composants vérifient seulement le branchement. Les mutations répondent à la question « ce test prouve-t-il vraiment quelque chose ? ».
 
 **Compromis.** Des tests qui simulent le navigateur (pointeur, plein écran) restent des simulations. Il n'y a pas de test de bout en bout dans un vrai navigateur (pas d'outil comme Playwright), donc certaines vérifications reposent sur le test manuel.
+
+### 10. L'export PDF par l'impression du navigateur
+
+**Contexte.** Le JSON ne se rouvre que dans cet éditeur. L'export PDF était hors périmètre au départ : ce périmètre a changé à la demande du propriétaire du projet, pour obtenir un format « présentable ».
+
+**Décision.** Pas de bibliothèque : `window.print()`. Choisir PDF fige les diapositives (`printSlides`, une référence suffit car elles sont immuables) et monte `PrintView`, un portail vers `body` qui contient une page 1280 x 720 par diapositive, rendue par le même `SlideView` que l'éditeur. Le CSS d'impression (`@page`, `@media print` dans `src/index.css`) masque l'éditeur et fixe la page 16:9 sans marges. On attend le décodage des images (5 secondes au plus), on imprime une fois, et la vue disparaît sur `afterprint` (repli à 60 secondes). Pendant l'impression, import, export, second PDF et raccourcis sont suspendus.
+
+**Pourquoi.** C'est le même rendu que l'éditeur (texte vectoriel, polices, opacité), donc la fidélité est parfaite, sans code de mise en page en double. Figer les diapositives évite qu'une modification faite pendant l'attente ne change ce qui est imprimé.
+
+**Compromis.** Le résultat dépend du navigateur (l'utilisateur doit choisir « Enregistrer au format PDF »), et la pagination réelle n'est pas testable avec jsdom. Ctrl+P hors export n'imprime rien, car l'éditeur est masqué à l'impression.
 
 ## Difficultés rencontrées
 
@@ -181,6 +191,7 @@ En plein écran, le navigateur consomme Échap pour sortir du plein écran : l'a
 
 ## Limites connues
 
+- Ctrl+P (impression native du navigateur) n'imprime rien : utiliser Exporter puis PDF. Le rendu d'impression réel n'est pas couvert par les tests automatiques.
 - Aucune sauvegarde automatique : recharger la page efface le travail non exporté.
 - Mobile non pris en charge, et pas de responsive de l'éditeur (largeurs fixes pour les panneaux latéraux).
 - Glisser des vignettes désactivé au toucher (boutons Monter / Descendre à la place).

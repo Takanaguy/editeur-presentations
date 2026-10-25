@@ -1,1 +1,24 @@
 @import "tailwindcss";
+
+/* Impression (export PDF) : une page 16:9 par diapositive, sans marges. Sans marges, le
+   navigateur n'a plus de place pour ses en-têtes et pieds de page, qui disparaissent. */
+@page {
+  size: 1280px 720px;
+  margin: 0;
+}
+
+@media print {
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    background: #fff;
+  }
+
+  /* Sans cela, les fonds colorés sont retirés à l'impression. */
+  .print-root,
+  .print-root * {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}

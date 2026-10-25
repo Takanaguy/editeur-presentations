@@ -1,7 +1,10 @@
-import { useRef, type ChangeEvent, type ReactNode, type Ref } from 'react'
+import { useRef, type ChangeEvent, type Ref } from 'react'
+import { ExportMenu, type ExportMenuItem } from './ExportMenu'
+import { FILE_BUTTON_CLASS } from './fileButtonClass'
 
 interface FileActionsProps {
-  onExport: () => void
+  onExportJson: () => void
+  onExportPdf: () => void
   onImportFile: (file: File) => void
   // Vrai pendant le mode présentation : rien ne doit partir ni arriver.
   disabled: boolean
@@ -10,57 +13,22 @@ interface FileActionsProps {
   importRef?: Ref<HTMLButtonElement>
 }
 
-interface FileButtonProps {
-  buttonRef?: Ref<HTMLButtonElement>
-  label: string
-  title: string
-  disabled: boolean
-  onClick: () => void
-  children: ReactNode
-}
-
-const BUTTON_CLASS =
-  'flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 enabled:hover:bg-slate-100 enabled:hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:text-slate-300'
-
-// Le nom accessible vient de l'aria-label ; le texte visible et l'icône sont décoratifs.
-function FileButton({ buttonRef, label, title, disabled, onClick, children }: FileButtonProps) {
-  return (
-    <button
-      ref={buttonRef}
-      type="button"
-      aria-label={label}
-      title={title}
-      disabled={disabled}
-      onClick={onClick}
-      className={BUTTON_CLASS}
-    >
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        width="14"
-        height="14"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        {children}
-      </svg>
-      {label}
-    </button>
-  )
-}
-
 // Présentationnel : exporter et importer sont relayés au parent.
 export function FileActions({
-  onExport,
+  onExportJson,
+  onExportPdf,
   onImportFile,
   disabled,
   exportRef,
   importRef,
 }: FileActionsProps) {
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Les formats d'export sont des données : un nouveau format = une ligne de plus ici.
+  const exportItems: ExportMenuItem[] = [
+    { id: 'json', label: 'Fichier JSON (se rouvre dans l\'éditeur)', onSelect: onExportJson },
+    { id: 'pdf', label: 'PDF (via l\'impression du navigateur)', onSelect: onExportPdf },
+  ]
 
   function handleChange(event: ChangeEvent<HTMLInputElement>) {
     const input = event.currentTarget
@@ -72,28 +40,34 @@ export function FileActions({
 
   return (
     <div role="group" aria-label="Fichier" className="flex items-center gap-1.5">
-      <FileButton
-        buttonRef={exportRef}
-        label="Exporter"
-        title="Exporter la présentation en JSON"
-        disabled={disabled}
-        onClick={onExport}
-      >
-        <path d="M12 4v11" />
-        <path d="M7 10l5 5 5-5" />
-        <path d="M5 20h14" />
-      </FileButton>
-      <FileButton
-        buttonRef={importRef}
-        label="Importer"
+      <ExportMenu items={exportItems} disabled={disabled} buttonRef={exportRef} />
+      {/* Le nom accessible vient de l'aria-label ; le texte visible et l'icône sont décoratifs. */}
+      <button
+        ref={importRef}
+        type="button"
+        aria-label="Importer"
         title="Importer une présentation JSON"
         disabled={disabled}
         onClick={() => inputRef.current?.click()}
+        className={FILE_BUTTON_CLASS}
       >
-        <path d="M12 15V4" />
-        <path d="M7 9l5-5 5 5" />
-        <path d="M5 20h14" />
-      </FileButton>
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          width="14"
+          height="14"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M12 15V4" />
+          <path d="M7 9l5-5 5 5" />
+          <path d="M5 20h14" />
+        </svg>
+        Importer
+      </button>
       <input
         ref={inputRef}
         type="file"
