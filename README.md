@@ -4,16 +4,31 @@
 
 Ce projet fait partie du dépôt du portfolio de Tanguy Horard, dans le sous-dossier `slide-editor/`. Il est indépendant du portfolio (son propre `package.json`).
 
-## Capture d'écran
+Réalisé avec l'assistance de Claude Code (agents de développement et de relecture) : voir la section « Méthode de travail » de [docs/DECISIONS.md](docs/DECISIONS.md).
 
-> **Capture à ajouter : `docs/screenshots/editeur.png`**
->
-> Le dossier `docs/screenshots/` est prêt (il contient un fichier `.gitkeep`). Quand les images existeront, on les ajoutera ici avec la syntaxe Markdown habituelle. Captures à prévoir :
->
-> 1. Vue d'ensemble de l'éditeur (vignettes à gauche, diapositive au centre, propriétés à droite) : `docs/screenshots/editeur.png`
-> 2. Panneau de propriétés avec un élément sélectionné (poignées visibles) : `docs/screenshots/proprietes.png`
-> 3. Mode présentation en plein écran : `docs/screenshots/presentation.png`
-> 4. Glisser d'une vignette, avec la barre d'insertion visible : `docs/screenshots/glisser-vignette.png`
+**En bref**
+- **Stack** : React 19, Vite 8, TypeScript strict, Tailwind CSS 4, tests Vitest. Un seul ajout d'exécution en plus de React : PptxGenJS, chargée à la demande au premier export PowerPoint.
+- **Vérifié** : 65 fichiers de test, 2168 tests qui passent. Un vrai PDF (avec Edge) et un vrai .pptx (ouvert dans LibreOffice Impress) ont été produits et regardés à la main.
+- **Pas vérifié** : PowerPoint lui-même, Firefox, Safari, Google Slides, Keynote.
+- **Limites** : voir la liste des [limites connues](#limites-connues).
+
+## Aperçu
+
+![Vue d'ensemble de l'éditeur : vignettes, diapositive, propriétés](docs/screenshots/editeur.png)
+
+*L'éditeur : les vignettes à gauche, la diapositive au centre, les propriétés à droite.*
+
+![Panneau de propriétés d'un texte sélectionné, avec les poignées de redimensionnement](docs/screenshots/proprietes.png)
+
+*Un texte sélectionné : ses poignées de redimensionnement et son panneau de propriétés.*
+
+![Mode présentation](docs/screenshots/presentation.png)
+
+*Le mode présentation : la diapositive en grand, avec le compteur en bas à droite.*
+
+![Glisser une vignette pour réordonner, avec la barre d'insertion bleue](docs/screenshots/glisser-vignette.png)
+
+*Réordonner en glissant une vignette : la barre bleue montre où elle va tomber.*
 
 ## Fonctionnalités
 
@@ -43,8 +58,18 @@ Ce projet fait partie du dépôt du portfolio de Tanguy Horard, dans le sous-dos
 - Mode présentation : diapositive plein écran, navigation au clavier ou au clic.
 - Export de la présentation en fichier JSON, import d'un fichier JSON (validé, annulable).
 - Export en PDF (via l'impression du navigateur : choisir « Enregistrer au format PDF »).
-- Export PowerPoint (.pptx) : un vrai fichier modifiable (zones de texte, formes, images), qui s'ouvre dans PowerPoint, LibreOffice Impress, Google Slides et Keynote. Les images sont converties en PNG si besoin (PowerPoint ne lit pas le WebP), l'opacité devient la transparence PowerPoint, et les cas qui n'ont pas pu être traduits (image distante bloquée, couleur inconnue) sont listés dans le message de fin d'export.
+- Export PowerPoint (.pptx) : un vrai fichier modifiable (zones de texte, formes, images), prévu pour PowerPoint, LibreOffice Impress, Google Slides et Keynote (seul LibreOffice Impress a été essayé, voir les limites connues). Les images sont converties en PNG si besoin (PowerPoint ne lit pas le WebP), l'opacité devient la transparence PowerPoint, et les cas qui n'ont pas pu être traduits (image distante bloquée, couleur inconnue) sont listés dans le message de fin d'export.
 - Titre de la présentation éditable (il donne aussi le nom du fichier exporté).
+
+## Quel format d'export choisir ?
+
+Le menu Exporter propose trois formats, qui ne servent pas à la même chose.
+
+| Format | À utiliser pour | À savoir |
+| --- | --- | --- |
+| JSON | Sauvegarder son travail et le rouvrir plus tard : c'est le format d'enregistrement. | Se rouvre uniquement dans cet éditeur (bouton Importer). Contient tout, y compris les images et les polices ajoutées. |
+| PDF | Présenter ou envoyer la présentation. | Le texte et les polices utilisées sont intégrés (vu dans Edge ; dépend du navigateur). Il passe par la boîte d'impression du navigateur : choisir « Enregistrer au format PDF » comme imprimante (le Ctrl+P natif n'imprime rien). Il ne se modifie pas. |
+| PowerPoint (.pptx) | Continuer à modifier la présentation dans PowerPoint, Google Slides, Keynote ou LibreOffice Impress, le logiciel gratuit équivalent de PowerPoint (seul LibreOffice Impress a été essayé). | Rendu proche de l'écran mais pas identique. Les polices doivent être installées sur l'ordinateur qui ouvre le fichier (celles ajoutées dans l'éditeur n'y sont pas intégrées). Pas d'export .odp natif : dans LibreOffice Impress, ouvrir le .pptx puis « Enregistrer sous » au format ODP. |
 
 ## Raccourcis clavier
 
@@ -77,20 +102,9 @@ Le texte en cours d'édition est aussi validé quand le champ perd le focus ou q
 
 Aux bornes, la navigation s'arrête (pas de retour au début). Les combinaisons avec Ctrl, Alt ou Cmd sont laissées au navigateur.
 
-## Stack
-
-- React 19 et Vite 8
-- TypeScript en mode strict (`strict`, `noUncheckedIndexedAccess`)
-- Tailwind CSS 4 (plugin Vite)
-- Vitest 5, React Testing Library, user-event et jsdom pour les tests
-- ESLint 10 avec typescript-eslint et eslint-plugin-react-hooks
-- PptxGenJS 4 (licence MIT) pour écrire le fichier .pptx
-
-Aucune bibliothèque pour le glisser-déposer, l'état ou la validation : tout est écrit dans le projet. Les dépendances d'exécution sont `react`, `react-dom` et `pptxgenjs`. `jszip` est en devDependency (les tests relisent l'archive .pptx produite), et un `overrides` dans `package.json` impose `image-size` 2.0.3 ou plus (dépendance de PptxGenJS utilisée sous Node seulement, absente du navigateur) : `npm audit` affiche 0 alerte. Cette dernière est chargée à la demande (import dynamique, au premier export PowerPoint) : elle est dans un fichier à part et n'alourdit pas le chargement de l'application.
-
 ## Lancer en local
 
-Prérequis : Node 22.12 ou plus (le projet est développé avec Node 24). Les versions installées de Vitest, jsdom et ESLint ne prennent pas en charge Node 20 pour les tests et le lint.
+Prérequis : Node 22.22.2 ou plus récent, hors Node 23, hors Node 25 et hors Node 24 avant 24.15 (contrainte de jsdom 30, utilisé par les tests). Le projet est développé avec Node 24.18. Vite 8 et ESLint 10 accepteraient Node 20.19, mais pas les tests.
 
 ```bash
 cd slide-editor
@@ -106,67 +120,76 @@ Depuis `slide-editor/` :
 
 | Commande | Rôle | Résultat constaté à la rédaction |
 | --- | --- | --- |
-| `npm test` | Lance tous les tests une fois (`vitest run`) | 65 fichiers, 2166 tests, tous passent |
+| `npm test` | Lance tous les tests une fois (`vitest run`) | 65 fichiers, 2168 tests, tous passent |
 | `npm run test:watch` | Relance les tests à chaque modification | (mode interactif, non lancé pour ce relevé) |
 | `npm run lint` | ESLint sur tout le projet | aucune erreur ni avertissement |
-| `npm run build` | Vérification des types (`tsc -b`) puis build de production dans `dist/` | réussi, 74 modules. JavaScript principal d'environ 296 ko (91 ko en gzip), plus deux fichiers chargés seulement au premier export PowerPoint : le code d'export (environ 11 ko) et PptxGenJS (environ 368 ko, 123 ko en gzip) |
+| `npm run build` | Vérification des types (`tsc -b`) puis build de production dans `dist/` | réussi, 74 modules. JavaScript principal de 295,6 ko (91,1 ko en gzip), plus deux fichiers chargés seulement au premier export PowerPoint : le code d'export (10,9 ko, 5,2 ko en gzip) et PptxGenJS (368,4 ko, 123,2 ko en gzip). Un troisième fichier de 0,09 ko remplace un module Node inutile dans le navigateur |
 | `npm run preview` | Sert le contenu de `dist/` pour le vérifier avant déploiement | (serveur, non lancé pour ce relevé ; la commande est présente dans `package.json`) |
 
 `npm run dev` et `npm run preview` sont des serveurs : leur présence a été vérifiée dans `package.json`, pas leur exécution.
+
+## Limites connues
+
+- **Un seul navigateur essayé en vrai** (Microsoft Edge). PowerPoint, Google Slides, Keynote, Firefox et Safari n'ont pas été testés.
+- **PDF** : le Ctrl+P natif n'imprime rien (utiliser Exporter puis PDF). Le rendu d'impression n'est pas dans la suite de tests ; il a été vu une fois dans Edge.
+- **PowerPoint** : rendu proche de l'écran mais pas identique (polices installées sur le poste, coupures de lignes, interligne). Le .pptx n'a été ouvert que dans LibreOffice Impress. Pas d'export .odp natif.
+- **Polices ajoutées** : pas de suppression (seulement Ctrl+Z), pas intégrées au fichier PowerPoint, licence à la charge de l'utilisateur.
+- **Rien n'est conservé si on recharge la page** : exporter en JSON pour garder son travail.
+- **Pas de mobile ni de petits écrans** ; le glisser des vignettes est désactivé au toucher.
+- **Clavier et accessibilité** : redimensionnement à la souris seulement, pas d'annonce aux lecteurs d'écran après annuler / rétablir.
+- **Pas de ratio verrouillé ni de guides d'alignement.**
+- **Le vrai plein écran n'a pas été vérifié** (simulé par les tests), et la performance avec de très grosses présentations n'a pas été mesurée.
+- **Format** : une seule version (`version: 1`), sans migration. Une image par adresse disparaît si le site distant disparaît.
+
+Détails : [docs/DECISIONS.md, section « Limites connues »](docs/DECISIONS.md#limites-connues).
+
+## Stack
+
+- React 19 et Vite 8
+- TypeScript 6 en mode strict (`strict`, `noUncheckedIndexedAccess`)
+- Tailwind CSS 4 (plugin Vite)
+- Vitest 5, React Testing Library, user-event et jsdom pour les tests
+- ESLint 10 avec typescript-eslint et eslint-plugin-react-hooks
+- PptxGenJS 4 (licence MIT) pour écrire le fichier .pptx
+
+Aucune bibliothèque pour le glisser-déposer, l'état ou la validation : tout est écrit dans le projet. Les dépendances d'exécution déclarées dans `package.json` sont `react`, `react-dom` et `pptxgenjs`. PptxGenJS est chargée à la demande (import dynamique, au premier export PowerPoint) : elle est dans un fichier à part et n'alourdit pas le chargement de l'application. `jszip` est déclarée en devDependency parce que les tests relisent l'archive .pptx produite ; PptxGenJS l'utilise aussi de son côté et l'installe elle-même. Un `overrides` dans `package.json` impose `image-size` 2.0.3 ou plus (une dépendance de PptxGenJS, utilisée sous Node seulement et absente du navigateur) : à la rédaction, `npm audit` affiche 0 vulnérabilité.
 
 ## Architecture
 
 ```
 slide-editor/
-├── index.html
-├── vite.config.ts          Vite, Tailwind et configuration de Vitest (jsdom)
-├── eslint.config.js
-├── docs/
-│   ├── DECISIONS.md        choix techniques et difficultés
-│   └── screenshots/        captures à ajouter
+├── index.html, vite.config.ts (Vite, Tailwind, Vitest avec jsdom), eslint.config.js
+├── docs/                   DECISIONS.md (choix techniques et difficultés), screenshots/ (captures du README)
 └── src/
+    ├── main.tsx, App.tsx, index.css   point d'entrée, composant racine, styles globaux (dont l'impression)
     ├── model/              données pures : types, fabriques, ids, type guards, limites, polices (fonts.ts, fontFormats.ts)
-    ├── editor/             logique d'édition pure : reducer, historique, géométrie
-    │   ├── reducer.ts          aiguillage des actions (switch exhaustif)
-    │   ├── slideOps.ts         opérations sur les diapositives
-    │   ├── elementOps.ts       opérations sur les éléments
-    │   ├── presentationOps.ts  charger une présentation, renommer
-    │   ├── fontOps.ts          ajouter une police, et la règle unique pour la refuser (fontBlockReason)
+    ├── editor/             logique d'édition pure
+    │   ├── reducer.ts          aiguillage des actions (switch exhaustif) vers slideOps.ts, elementOps.ts,
+    │   │                       presentationOps.ts (charger, renommer) et fontOps.ts (ajouter une police, fontBlockReason)
     │   ├── geometry.ts         bornes, déplacement, redimensionnement, index de dépôt
     │   ├── history.ts          annuler / rétablir (snapshots)
     │   ├── addLimits.ts        règle unique pour refuser un ajout
-    │   └── state.ts, types.ts  état initial, types de l'état et des actions
-    ├── io/                 entrées et sorties : JSON, images, téléchargement
-    │   ├── presentationJson.ts   validation, import, export
+    │   └── state.ts, types.ts  état initial, types de l'état et des actions (et testHelpers.ts, aides des tests)
+    ├── io/                 entrées et sorties
+    │   ├── presentationJson.ts   validation, import, export JSON
     │   ├── pptxExport.ts         export PowerPoint : plan pur (pouces, points) puis écriture avec PptxGenJS
-    │   ├── pptxImages.ts         images pour PowerPoint : conversion en PNG via un canvas
-    │   ├── cssColor.ts           couleur CSS vers hexadécimal PowerPoint
-    │   ├── fontFile.ts           lire un fichier de police (extension, taille, signature) en data URL
-    │   ├── fontLoader.ts         charger la police dans le navigateur (FontFace), avec délai maximal
+    │   ├── pptxImages.ts, cssColor.ts   images en PNG via un canvas ; couleur CSS vers hexadécimal PowerPoint
+    │   ├── fontFile.ts, fontLoader.ts   lire un fichier de police (extension, taille, signature) ; le charger (FontFace)
     │   └── imageUrl.ts, imageSize.ts, imageElement.ts, readImageFile.ts, readTextFile.ts, download.ts
     ├── hooks/              branchement de la logique sur React
     │   ├── EditorProvider.tsx, EditorContext.ts, useEditor.ts   le store
-    │   ├── useElementGesture.ts    déplacer et redimensionner
-    │   ├── useThumbnailDrag.ts     glisser les vignettes
-    │   ├── useKeyboardShortcuts.ts raccourcis
-    │   ├── useDocumentFonts.ts     garde document.fonts synchronisé avec les polices de la présentation (et dit quand plus rien ne charge)
-    │   └── useElementSize.ts       mesure de la zone d'édition
-    ├── components/         interface
-    │   ├── layout/             EditorLayout (seul composant relié au store), bandeau, titre
-    │   ├── canvas/             SlideView, SlideCanvas, ElementView, TextEditor
-    │   ├── thumbnails/         liste de vignettes et boutons de diapositives
-    │   ├── toolbar/            ajout d'éléments, fichier (menu Exporter), annuler / rétablir
-    │   ├── properties/         panneau de propriétés
-    │   ├── presentation/       mode présentation et navigation
-    │   └── print/              vue d'impression (une page par diapositive, export PDF)
-    └── test/               aides de test partagées (fixtures, événements de pointeur, disposition simulée)
+    │   ├── useElementGesture.ts, useThumbnailDrag.ts, useElementSize.ts   déplacer et redimensionner, glisser les vignettes, mesurer
+    │   └── useKeyboardShortcuts.ts, useDocumentFonts.ts   raccourcis ; document.fonts synchronisé avec les polices de la présentation
+    ├── components/         interface : layout (EditorLayout, seul composant relié au store), canvas, thumbnails,
+    │                       toolbar (menu Exporter), properties, presentation, print (vue d'impression du PDF)
+    └── test/               aides de test partagées (setup, fixtures, événements de pointeur, disposition simulée, fausses polices)
 ```
 
 Les tests sont placés à côté du code qu'ils vérifient (`*.test.ts` et `*.test.tsx`).
 
 **Règles de dépendances** (respectées dans le code actuel) :
 - `model/`, `editor/` et `io/` n'importent jamais React. Leur logique se teste sans interface.
-- Les composants de présentation (canvas, vignettes, barres d'outils, propriétés, mode présentation) reçoivent des données et des fonctions par leurs props, et ne contiennent pas de logique métier.
+- Les composants de présentation (canvas, vignettes, barres d'outils, propriétés, mode présentation) reçoivent des données et des fonctions par leurs props, et ne contiennent pas de logique métier. Ils n'utilisent que des hooks d'interface (`useElementGesture`, `useThumbnailDrag`, `useElementSize`), jamais le store.
 - Seul `EditorLayout` est connecté au store (`useEditor`). Il lit l'état, répartit des props et envoie les actions.
 
 ## Format du fichier JSON
@@ -264,38 +287,7 @@ Le fichier `vercel.json` à la racine du dépôt concerne le portfolio. Il n'est
 
 ## Hors périmètre volontaire
 
-Ces points ne sont pas dans le projet, par choix de périmètre (l'export PDF en faisait partie au départ : le périmètre a changé à la demande du propriétaire du projet, voir `docs/DECISIONS.md`) :
-- animations des éléments et transitions entre diapositives
-- thèmes et modèles de mise en page
-- collaboration en temps réel
-- sauvegarde automatique (le travail n'est enregistré que par l'export JSON)
-- comptes utilisateurs
-
-## Limites connues
-
-- Ctrl+P (impression native du navigateur) n'imprime rien : utiliser Exporter puis PDF.
-- **Le rendu d'impression du PDF n'a pas pu être vérifié de façon automatique** : jsdom n'imprime pas. Les tests couvrent le déclenchement, pas la pagination ni les couleurs. À essayer à la main dans un navigateur.
-- **Export PowerPoint : le rendu n'est pas garanti identique à l'écran.** Le texte reprend la police choisie (Arial si aucune), mais le fichier ne contient que son nom : la police doit être installée sur l'ordinateur qui ouvre le fichier PowerPoint. Les 8 polices courantes y sont presque toujours, une autre police (par exemple « Calibri » venue d'un fichier importé) est signalée par un avertissement à la fin de l'export. Les coupures de lignes et l'interligne peuvent différer légèrement : l'interligne est fixé à 1,25 fois la taille de police, comme à l'écran, mais chaque logiciel place la première ligne à sa façon. Un texte plus long que sa boîte déborde au lieu d'être coupé. L'opacité d'un texte devient la transparence du texte PowerPoint ; une ancienne version de LibreOffice peut l'ignorer (non vérifié).
-- **Pas d'export .odp natif.** Pour obtenir un fichier OpenDocument, ouvrir le .pptx dans LibreOffice Impress puis « Enregistrer sous » au format .odp.
-- **Le fichier .pptx produit n'est pas vérifié automatiquement dans PowerPoint ou LibreOffice** : les tests contrôlent le contenu de l'archive (diapositives, positions, couleurs, transparence), pas son affichage. À ouvrir à la main dans les logiciels visés.
-- **Les polices listées sont des polices système : leur rendu dépend de l'ordinateur** (Arial, Georgia... sont présentes sur Windows et macOS, pas toujours sous Linux). Dans le PowerPoint, la police doit être installée sur l'ordinateur qui ouvre le fichier. Pour ne pas dépendre du poste, on peut ajouter sa propre police depuis un fichier (voir ci-dessous).
-- **Polices ajoutées par fichier :**
-  - Il n'y a pas d'interface pour SUPPRIMER une police ajoutée : on peut seulement annuler l'ajout (Ctrl+Z) tant qu'il est dans l'historique. Une police ajoutée mais plus utilisée reste dans le fichier JSON (et lui donne son poids).
-  - La licence de la police est de la responsabilité de l'utilisateur : l'éditeur ne la vérifie pas, et la police est copiée dans le fichier JSON, donc redistribuée avec lui. L'interface rappelle de vérifier que la licence autorise cette intégration.
-  - La police n'est PAS intégrée au fichier PowerPoint (PptxGenJS ne sait pas le faire) : l'export garde son nom et signale par un avertissement qu'elle doit être installée sur l'ordinateur qui ouvre le fichier.
-  - Dans le PDF, les polices utilisées sont intégrées par l'impression du navigateur, à condition que le navigateur ait accepté de les charger ; sinon le texte retombe sur une police de repli. L'impression attend (5 secondes au plus, en tout) la fin du chargement des polices, y compris celles d'un import ou d'un rétablir tout récents ; au delà elle part quand même. Cette intégration n'est pas vérifiée automatiquement (jsdom n'imprime pas et n'a ni `FontFace` ni `document.fonts`) : à essayer à la main dans un navigateur.
-  - Une police que le navigateur refuse (par exemple venue d'un JSON importé dont le contenu est corrompu) RESTE dans la présentation, faute d'interface pour la retirer : l'erreur n'est affichée qu'une fois, la police n'est pas retentée tant que sa source ne change pas, et le texte qui la nomme s'affiche avec une police de repli.
-  - Pendant un chargement, importer une autre présentation annule l'ajout en cours (« Ajout de police annulé : la présentation a changé pendant le chargement. »). L'ajout est aussi indisponible pendant la présentation, l'impression et l'export PowerPoint : le bouton est grisé et la raison est écrite sous lui.
-  - Le contrôle des premiers octets ne remplace pas la validation du navigateur : une police valide au début mais corrompue ensuite est refusée au chargement (message d'erreur), pas à la lecture du fichier.
-  - Ajouter une police charge le fichier deux fois dans le navigateur (une fois pour la valider, une fois pour l'enregistrer) : sans conséquence visible pour 2 Mo.
-- **Rien n'est conservé si on recharge la page** : l'état vit en mémoire. Il faut exporter en JSON pour garder son travail.
-- **Pas d'adaptation au mobile ni aux petits écrans** : la mise en page à trois colonnes a des largeurs fixes pour les panneaux latéraux, et l'éditeur n'est pas responsive. Le glisser des vignettes est désactivé au toucher (les boutons Monter / Descendre servent d'alternative).
-- **Le clavier ne couvre pas tout** : les flèches déplacent l'élément sélectionné, mais le redimensionnement ne se fait qu'à la souris (les poignées ne sont pas atteignables au clavier). Les lecteurs d'écran ne reçoivent pas d'annonce après un annuler / rétablir.
-- **Le vrai plein écran du navigateur n'a pas pu être vérifié de façon automatique** : jsdom ne le gère pas, et l'aperçu intégré utilisé pendant le développement ne l'accorde pas. Les tests le simulent. À essayer à la main dans un navigateur.
-- **Pas de test de performance** avec de très grosses présentations (200 diapositives très chargées, images lourdes).
-- **Une seule version de format** : `version: 1` est la seule acceptée, aucune migration n'existe encore.
-- **Les images par URL dépendent du site distant** : si l'adresse disparaît, l'image disparaît. Dans l'export PowerPoint, elle n'est incluse que si le site qui l'héberge autorise sa lecture (CORS) ; sinon elle est remplacée par un cadre gris portant le texte alternatif, et le message de fin d'export l'indique. Les images ajoutées depuis un fichier, elles, sont dans le JSON (donc alourdissent le fichier) et n'ont pas ce problème.
-- Pas de ratio verrouillé au redimensionnement, pas de guides d'alignement.
+Pas dans le projet, par choix de périmètre : animations et transitions, thèmes et modèles de mise en page, collaboration en temps réel, sauvegarde automatique (le travail n'est enregistré que par l'export JSON), comptes utilisateurs. L'export PDF en faisait partie au départ : le périmètre a changé à la demande du propriétaire du projet (voir [docs/DECISIONS.md](docs/DECISIONS.md)).
 
 ## Pour aller plus loin
 
