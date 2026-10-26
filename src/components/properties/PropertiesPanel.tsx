@@ -22,8 +22,13 @@ const DEFAULT_FILL = '#ffffff'
 const LABEL_CLASS = 'text-sm text-slate-700'
 const INPUT_CLASS =
   'rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600'
-const BUTTON_CLASS =
-  'flex h-8 flex-1 cursor-pointer items-center justify-center rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300 disabled:hover:bg-slate-50'
+// Style commun des boutons du panneau (hauteur de 32 px). La largeur est ajoutée à part :
+// flex-1 dans une rangée, w-full pour un bouton seul. Un flex-1 dans une colonne ferait
+// ignorer la hauteur h-8 (le bouton se réduirait à son texte).
+const BUTTON_BASE =
+  'flex h-8 cursor-pointer items-center justify-center rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300 disabled:hover:bg-slate-50'
+const BUTTON_CLASS = `${BUTTON_BASE} flex-1`
+const WIDE_BUTTON_CLASS = `${BUTTON_BASE} mt-2 w-full`
 const PRESSED_CLASS = 'border-blue-300 bg-blue-100 text-blue-800 hover:bg-blue-100'
 
 // Un input de type color n'accepte que #rrggbb en minuscules : on développe #rgb et on
@@ -401,7 +406,7 @@ function FontField({ element, onUpdate, onSeal, fontProps }: FontFieldProps) {
       </select>
       <button
         type="button"
-        className={BUTTON_CLASS}
+        className={WIDE_BUTTON_CLASS}
         disabled={!canAddFont}
         title={canAddFont ? undefined : addFontDisabledReason}
         aria-describedby={helpId}
@@ -542,7 +547,7 @@ function ImageFields({ element, onUpdate, onSeal }: FieldsProps<ImageElement>) {
 // Rappel en lecture seule : la géométrie se change à la souris, pas ici.
 function Geometry({ element }: { element: SlideElement }) {
   return (
-    <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-t border-slate-200 pt-3 text-xs text-slate-500">
+    <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-t border-slate-200 pt-3 text-sm text-slate-600">
       <dt>Position X, Y</dt>
       <dd className="text-right tabular-nums">
         {Math.round(element.x)}, {Math.round(element.y)}

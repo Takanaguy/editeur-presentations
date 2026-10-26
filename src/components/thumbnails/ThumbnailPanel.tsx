@@ -13,7 +13,7 @@ interface ThumbnailPanelProps {
 }
 
 // Épaisseur de la barre d'insertion, en pixels.
-const INDICATOR_HEIGHT = 3
+const INDICATOR_HEIGHT = 4
 
 export function ThumbnailPanel({ slides, selectedSlideId, onSelect, onMoveSlide }: ThumbnailPanelProps) {
   // Conteneur défilant et éléments des vignettes : le hook les mesure pendant le glisser.

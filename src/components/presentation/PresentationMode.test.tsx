@@ -125,13 +125,13 @@ describe('PresentationMode : affichage', () => {
     })
   })
 
-  it('affiche un compteur discret caché des lecteurs d\'écran', () => {
+  it('affiche un compteur lisible mais discret, caché des lecteurs d\'écran', () => {
     setup(1)
 
     const counter = screen.getByText('2 / 3')
     expect(counter).toHaveAttribute('aria-hidden', 'true')
     expect(counter).toHaveClass('pointer-events-none')
-    expect(counter).toHaveClass('text-white/50')
+    expect(counter).toHaveClass('text-sm', 'text-white/80')
   })
 
   it('couvre toute la fenêtre sur fond noir', () => {

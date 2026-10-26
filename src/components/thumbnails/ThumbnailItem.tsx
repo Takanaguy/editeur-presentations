@@ -57,10 +57,11 @@ export function ThumbnailItem({
       data-dragging={dragging ? 'true' : undefined}
       className={`relative block rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ${
         selected ? 'ring-2 ring-blue-500' : 'ring-1 ring-slate-300 hover:ring-slate-400'
-      } ${dragging ? 'cursor-grabbing opacity-50' : 'cursor-pointer'}`}
+      } ${dragging ? 'cursor-grabbing' : 'cursor-pointer'}`}
     >
-      {/* Le nom accessible vient de l'aria-label : le contenu visuel est masqué aux lecteurs d'écran. */}
-      <div aria-hidden="true">
+      {/* Le nom accessible vient de l'aria-label : le contenu visuel est masqué aux lecteurs d'écran.
+          Pendant le glisser, seul l'aperçu est atténué : le numéro reste opaque et lisible. */}
+      <div aria-hidden="true" className={dragging ? 'opacity-60' : undefined}>
         <SlideView slide={slide} scale={THUMBNAIL_WIDTH / SLIDE_WIDTH} />
       </div>
       <span

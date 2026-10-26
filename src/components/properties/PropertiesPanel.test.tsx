@@ -67,6 +67,13 @@ describe('PropertiesPanel', () => {
     expect(screen.getByText('Position X, Y').nextElementSibling).toHaveTextContent('10, 21')
     expect(screen.getByText('Taille L x H').nextElementSibling).toHaveTextContent('300 x 100')
   })
+
+  it('écrit ce rappel en gris foncé et en taille lisible', () => {
+    setup(createRectElement())
+
+    const list = screen.getByText('Position X, Y').parentElement
+    expect(list).toHaveClass('text-sm', 'text-slate-600')
+  })
 })
 
 describe('PropertiesPanel : texte', () => {
@@ -474,6 +481,14 @@ describe('PropertiesPanel : police', () => {
     const fileInput = () =>
       screen.getByLabelText<HTMLInputElement>('Ajouter une police (WOFF2, WOFF, TTF ou OTF)')
     const addButton = () => screen.getByRole('button', { name: 'Ajouter une police…' })
+
+    it('le bouton d\'ajout a le style des autres boutons : 32 px de haut, pleine largeur, espace au dessus', () => {
+      setup(createTextElement())
+
+      expect(addButton()).toHaveClass('h-8', 'w-full', 'mt-2', 'border', 'bg-white', 'rounded-md', 'text-xs')
+      // flex-1 dans une colonne ferait ignorer la hauteur : le bouton serait trop mince.
+      expect(addButton()).not.toHaveClass('flex-1')
+    })
 
     it('sans police ajoutée, pas de groupe « Mes polices »', () => {
       setup(createTextElement())

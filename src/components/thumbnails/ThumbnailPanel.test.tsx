@@ -88,16 +88,16 @@ describe('ThumbnailPanel : glisser pour réordonner', () => {
 
     firePointer(item(3), 'pointerdown', { clientX: 10, clientY: itemCenter(2) })
     // Pointeur au dessus de tout : avant la première autre vignette (haut à 8, moins
-    // la moitié de l'écart mesuré, 5), la barre de 3 px étant centrée sur 3.
+    // la moitié de l'écart mesuré, 5), la barre de 4 px étant centrée sur 3 (donc top 1).
     firePointer(window, 'pointermove', { clientX: 10, clientY: 45 })
     expect(indicator()).toBeInTheDocument()
-    expect(indicator()).toHaveStyle({ top: '1.5px', height: '3px' })
+    expect(indicator()).toHaveStyle({ top: '1px', height: '4px' })
     expect(indicator()).toHaveAttribute('aria-hidden', 'true')
     expect(indicator()).toHaveClass('pointer-events-none')
 
     // Entre la 1 et la 2 : au milieu de l'écart (bas 108, haut 118), donc 113.
     firePointer(window, 'pointermove', { clientX: 10, clientY: 100 })
-    expect(indicator()).toHaveStyle({ top: '111.5px' })
+    expect(indicator()).toHaveStyle({ top: '111px' })
 
     firePointer(window, 'pointerup', { clientX: 10, clientY: 100 })
     expect(indicator()).not.toBeInTheDocument()
@@ -126,7 +126,12 @@ describe('ThumbnailPanel : glisser pour réordonner', () => {
     firePointer(window, 'pointermove', { clientX: 10, clientY: itemCenter(1) + 60 })
 
     expect(item(2)).toHaveAttribute('data-dragging', 'true')
-    expect(item(2)).toHaveClass('opacity-50', 'cursor-grabbing')
+    expect(item(2)).toHaveClass('cursor-grabbing')
+    // Seul l'aperçu est atténué : le bouton entier et le numéro restent opaques.
+    expect(item(2)).not.toHaveClass('opacity-50', 'opacity-60')
+    expect(item(2).querySelector('[aria-hidden="true"]')).toHaveClass('opacity-60')
+    expect(within(item(2)).getByText('2')).not.toHaveClass('opacity-60')
+    expect(item(1).querySelector('[aria-hidden="true"]')).not.toHaveClass('opacity-60')
     expect(item(1)).not.toHaveAttribute('data-dragging')
     expect(item(3)).not.toHaveAttribute('data-dragging')
     expect(screen.getByRole('navigation')).toHaveClass('select-none')

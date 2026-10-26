@@ -168,7 +168,7 @@ export function PresentationMode({ slides, startIndex, onExit }: PresentationMod
       </p>
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute right-4 bottom-3 text-sm text-white/50"
+        className="pointer-events-none absolute right-4 bottom-3 text-sm text-white/80"
       >
         {safeIndex + 1} / {count}
       </span>
