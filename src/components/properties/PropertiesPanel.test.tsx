@@ -12,30 +12,33 @@ import { PropertiesPanel, toHexColor } from './PropertiesPanel'
 
 const MIDDLE = { front: true, back: true }
 
-function setup(element: SlideElement | null, canReorder = MIDDLE) {
+interface FontOptions {
+  customFonts?: string[]
+  canAddFont?: boolean
+  addFontDisabledReason?: string
+}
+
+function setup(element: SlideElement | null, canReorder = MIDDLE, fonts: FontOptions = {}) {
   const onUpdate = vi.fn()
   const onSeal = vi.fn()
   const onReorder = vi.fn()
-  const view = render(
+  const onAddFont = vi.fn()
+  const panel = (current: SlideElement | null) => (
     <PropertiesPanel
-      element={element}
+      element={current}
       onUpdate={onUpdate}
       onSeal={onSeal}
       onReorder={onReorder}
       canReorder={canReorder}
-    />,
+      customFonts={fonts.customFonts ?? []}
+      onAddFont={onAddFont}
+      canAddFont={fonts.canAddFont ?? true}
+      addFontDisabledReason={fonts.addFontDisabledReason}
+    />
   )
-  const rerender = (next: SlideElement | null) =>
-    view.rerender(
-      <PropertiesPanel
-        element={next}
-        onUpdate={onUpdate}
-        onSeal={onSeal}
-        onReorder={onReorder}
-        canReorder={canReorder}
-      />,
-    )
-  return { onUpdate, onSeal, onReorder, rerender }
+  const view = render(panel(element))
+  const rerender = (next: SlideElement | null) => view.rerender(panel(next))
+  return { onUpdate, onSeal, onReorder, onAddFont, rerender }
 }
 
 describe('PropertiesPanel', () => {
@@ -464,6 +467,153 @@ describe('PropertiesPanel : police', () => {
 
     expect(onUpdate).toHaveBeenCalledWith({ fontFamily: null })
     expect(onSeal).toHaveBeenCalledTimes(1)
+  })
+
+  describe('polices ajoutées', () => {
+    const fontFile = () => new File(['x'], 'Roboto.woff2', { type: 'font/woff2' })
+    const fileInput = () =>
+      screen.getByLabelText<HTMLInputElement>('Ajouter une police (WOFF2, WOFF, TTF ou OTF)')
+    const addButton = () => screen.getByRole('button', { name: 'Ajouter une police…' })
+
+    it('sans police ajoutée, pas de groupe « Mes polices »', () => {
+      setup(createTextElement())
+
+      expect(screen.queryByRole('group', { name: 'Mes polices' })).not.toBeInTheDocument()
+    })
+
+    it('liste les polices ajoutées dans le groupe « Mes polices », avant les courantes', () => {
+      setup(createTextElement(), MIDDLE, { customFonts: ['Roboto', 'Fira Code'] })
+
+      const group = within(select()).getByRole('group', { name: 'Mes polices' })
+      const options = within(group).getAllByRole('option') as HTMLOptionElement[]
+      expect(options.map((o) => o.textContent)).toEqual(['Roboto', 'Fira Code'])
+      expect(options[0]?.style.fontFamily).toBe('"Roboto", sans-serif')
+      const common = within(select()).getByRole('group', { name: 'Polices courantes' })
+      expect(group.compareDocumentPosition(common) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+
+    it('une police ajoutée et utilisée est sélectionnée, sans option « non listée »', () => {
+      setup(createTextElement({ fontFamily: 'Roboto' }), MIDDLE, { customFonts: ['Roboto'] })
+
+      expect(select()).toHaveValue('Roboto')
+      expect(screen.queryByRole('option', { name: /non listée/ })).not.toBeInTheDocument()
+    })
+
+    it('une police ni listée ni ajoutée garde son option « non listée »', () => {
+      setup(createTextElement({ fontFamily: 'Calibri' }), MIDDLE, { customFonts: ['Roboto'] })
+
+      expect(screen.getByRole('option', { name: 'Calibri (non listée)' })).toBeInTheDocument()
+    })
+
+    it('choisir une police ajoutée appelle onUpdate puis onSeal', () => {
+      const { onUpdate, onSeal } = setup(createTextElement(), MIDDLE, { customFonts: ['Roboto'] })
+
+      fireEvent.change(select(), { target: { value: 'Roboto' } })
+
+      expect(onUpdate).toHaveBeenCalledWith({ fontFamily: 'Roboto' })
+      expect(onSeal).toHaveBeenCalledTimes(1)
+    })
+
+    it('le bouton ouvre le sélecteur de fichier caché, limité aux 4 formats', () => {
+      setup(createTextElement())
+      const click = vi.spyOn(fileInput(), 'click').mockImplementation(() => {})
+
+      expect(addButton()).toHaveAttribute('type', 'button')
+      expect(fileInput()).toHaveAttribute('type', 'file')
+      expect(fileInput()).toHaveAttribute('accept', '.woff2,.woff,.ttf,.otf')
+      expect(fileInput()).toHaveAttribute('hidden')
+      fireEvent.click(addButton())
+
+      expect(click).toHaveBeenCalledTimes(1)
+    })
+
+    it('un fichier choisi appelle onAddFont, puis la valeur est vidée', () => {
+      const { onAddFont } = setup(createTextElement())
+      const file = fontFile()
+
+      fireEvent.change(fileInput(), { target: { files: [file] } })
+
+      expect(onAddFont).toHaveBeenCalledTimes(1)
+      expect(onAddFont).toHaveBeenCalledWith(file)
+      expect(fileInput().value).toBe('')
+    })
+
+    it("aucun fichier choisi n'appelle pas onAddFont", () => {
+      const { onAddFont } = setup(createTextElement())
+
+      fireEvent.change(fileInput(), { target: { files: [] } })
+
+      expect(onAddFont).not.toHaveBeenCalled()
+    })
+
+    it('limite atteinte : bouton désactivé avec la raison en infobulle', () => {
+      setup(createTextElement(), MIDDLE, {
+        canAddFont: false,
+        addFontDisabledReason: 'Limite de 10 polices atteinte.',
+      })
+
+      expect(addButton()).toBeDisabled()
+      expect(addButton()).toHaveAttribute('title', 'Limite de 10 polices atteinte.')
+    })
+
+    it.each([
+      'Limite de 10 polices atteinte.',
+      "Indisponible pendant l'impression.",
+      "Indisponible pendant l'export.",
+      'Indisponible pendant la présentation.',
+    ])("la raison « %s » est visible dans le texte d'aide et décrit le bouton", (reason) => {
+      setup(createTextElement(), MIDDLE, { canAddFont: false, addFontDisabledReason: reason })
+
+      expect(screen.getByText(reason)).toBeVisible()
+      expect(addButton()).toBeDisabled()
+      expect(addButton()).toHaveAccessibleDescription(expect.stringContaining(reason))
+      // L'aide habituelle reste là, à la suite de la raison.
+      expect(addButton()).toHaveAccessibleDescription(/licence de la police/)
+    })
+
+    it("sans raison fournie, le bouton est désactivé et le texte d'aide reste seul", () => {
+      setup(createTextElement(), MIDDLE, { canAddFont: false })
+
+      expect(addButton()).toBeDisabled()
+      expect(addButton()).not.toHaveAttribute('title')
+      expect(addButton()).toHaveAccessibleDescription(/^WOFF2, WOFF, TTF ou OTF/)
+    })
+
+    it('bouton actif : aucune raison affichée même si une raison traîne', () => {
+      setup(createTextElement(), MIDDLE, {
+        canAddFont: true,
+        addFontDisabledReason: 'Limite de 10 polices atteinte.',
+      })
+
+      expect(screen.queryByText('Limite de 10 polices atteinte.')).not.toBeInTheDocument()
+    })
+
+    it("bouton actif : pas d'infobulle", () => {
+      setup(createTextElement())
+
+      expect(addButton()).toBeEnabled()
+      expect(addButton()).not.toHaveAttribute('title')
+    })
+
+    it("affiche l'aide sur les formats, la taille et la licence", () => {
+      setup(createTextElement())
+
+      expect(
+        screen.getByText(
+          'WOFF2, WOFF, TTF ou OTF, 2 Mo maximum. Vérifiez que la licence de la police autorise son intégration.',
+        ),
+      ).toBeInTheDocument()
+      expect(addButton()).toHaveAccessibleDescription(/licence de la police/)
+    })
+
+    it.each([
+      ['rectangle', createRectElement()],
+      ['image', createImageElement('data:,a')],
+    ])('pas de bouton pour un %s', (_label, element) => {
+      setup(element)
+
+      expect(screen.queryByRole('button', { name: 'Ajouter une police…' })).not.toBeInTheDocument()
+    })
   })
 
   it('le champ Police vient avant la taille de police', () => {

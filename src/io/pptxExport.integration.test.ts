@@ -20,6 +20,7 @@ function presentationOf(title: string, ...slides: SlideElement[][]): Presentatio
   return {
     version: 1,
     title,
+    fonts: [],
     slides: slides.map((elements) => ({ ...createSlide(), elements })),
   }
 }

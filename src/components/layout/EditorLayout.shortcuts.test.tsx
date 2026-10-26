@@ -206,7 +206,7 @@ describe('EditorLayout : déplacer avec les flèches', () => {
 
   it('à la limite gauche de la diapositive, aucune entrée n\'est créée', async () => {
     const slide = { ...createSlide(), elements: [createTextElement({ text: 'Bord', x: 0, y: 100 })] }
-    renderLayout({ version: 1, title: 'Test', slides: [slide] })
+    renderLayout({ version: 1, title: 'Test', slides: [slide], fonts: [] })
     await userEvent.click(within(main()).getByText('Bord'))
     const before = pastCount()
 

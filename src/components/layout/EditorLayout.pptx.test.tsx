@@ -340,6 +340,7 @@ describe('EditorLayout : export PowerPoint en cours', () => {
     const imported: Presentation = {
       version: 1,
       title: 'Importée',
+      fonts: [],
       slides: [{ ...createSlide(), elements: [createTextElement({ text: 'Zèbre' })] }],
     }
     const file = new File(['{}'], 'import.json', { type: 'application/json' })

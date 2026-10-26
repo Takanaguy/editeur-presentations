@@ -33,7 +33,7 @@ export function duplicateSlide(slide: Slide): Slide {
 }
 
 export function createPresentation(title = 'Sans titre'): Presentation {
-  return { version: 1, title, slides: [createSlide()] }
+  return { version: 1, title, slides: [createSlide()], fonts: [] }
 }
 
 // Dans chaque fabrique, id et type sont posés après les overrides : même un

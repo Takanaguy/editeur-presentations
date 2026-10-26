@@ -27,7 +27,7 @@ function makeState(count: number, selected = 0): EditorState {
   const current = slides[selected]
   if (!current) throw new Error('index de test invalide')
   return {
-    presentation: { version: 1, title: 'Test', slides },
+    presentation: { version: 1, title: 'Test', slides, fonts: [] },
     selectedSlideId: current.id,
     selectedElementId: current.elements[0]?.id ?? null,
   }
@@ -340,7 +340,7 @@ describe('aiguillage des actions d\'éléments', () => {
 describe('aiguillage des actions de présentation', () => {
   it('presentation/load remplace tout et sélectionne la première diapositive', () => {
     const { state } = makeElementState()
-    const presentation = { version: 1 as const, title: 'Autre', slides: [createSlide(), createSlide()] }
+    const presentation = { version: 1 as const, title: 'Autre', slides: [createSlide(), createSlide()], fonts: [] }
     const next = editorReducer(state, { type: 'presentation/load', presentation })
     expect(next.presentation).toBe(presentation)
     expect(next.selectedSlideId).toBe(presentation.slides[0]?.id)
@@ -350,7 +350,7 @@ describe('aiguillage des actions de présentation', () => {
   it('presentation/load avec la même référence ou sans diapositive : même state', () => {
     const { state } = makeElementState()
     expect(editorReducer(state, { type: 'presentation/load', presentation: state.presentation })).toBe(state)
-    const empty = { version: 1 as const, title: 'Vide', slides: [] }
+    const empty = { version: 1 as const, title: 'Vide', slides: [], fonts: [] }
     expect(editorReducer(state, { type: 'presentation/load', presentation: empty })).toBe(state)
   })
 
@@ -364,7 +364,7 @@ describe('aiguillage des actions de présentation', () => {
   it('ne modifie pas un état gelé en profondeur', () => {
     const { state } = makeElementState()
     const frozen = deepFreeze({ ...state })
-    const presentation = deepFreeze({ version: 1 as const, title: 'A', slides: [createSlide()] })
+    const presentation = deepFreeze({ version: 1 as const, title: 'A', slides: [createSlide()], fonts: [] })
     expect(() => {
       editorReducer(frozen, { type: 'presentation/load', presentation })
       editorReducer(frozen, { type: 'presentation/rename', title: 'B' })
@@ -378,7 +378,7 @@ describe('limites partagées avec l\'import de fichier', () => {
     const first = slides[0]
     if (!first) throw new Error('au moins une diapositive')
     return {
-      presentation: { version: 1, title: 'Test', slides },
+      presentation: { version: 1, title: 'Test', slides, fonts: [] },
       selectedSlideId: first.id,
       selectedElementId: null,
     }
@@ -388,7 +388,7 @@ describe('limites partagées avec l\'import de fichier', () => {
     const slide = createSlide()
     slide.elements = Array.from({ length: count }, () => createRectElement())
     return {
-      presentation: { version: 1, title: 'Test', slides: [slide] },
+      presentation: { version: 1, title: 'Test', slides: [slide], fonts: [] },
       selectedSlideId: slide.id,
       selectedElementId: null,
     }
@@ -487,7 +487,7 @@ describe('poids total des images', () => {
     const slide = createSlide()
     slide.elements = [imageOfLength(MAX_TOTAL_IMAGE_SRC_LENGTH - margin)]
     return {
-      presentation: { version: 1, title: 'Test', slides: [slide] },
+      presentation: { version: 1, title: 'Test', slides: [slide], fonts: [] },
       selectedSlideId: slide.id,
       selectedElementId: null,
     }

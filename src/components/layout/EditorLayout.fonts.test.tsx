@@ -168,7 +168,7 @@ describe('EditorLayout : police et fichiers', () => {
 
   it("l'import d'un nom de police dangereux est refusé avec le message", async () => {
     const slide = { ...createSlide(), elements: [createTextElement({ text: 'Avant' })] }
-    renderLayout({ version: 1, title: 'Avant', slides: [slide] })
+    renderLayout({ version: 1, title: 'Avant', slides: [slide], fonts: [] })
 
     chooseFile(presentationWithFont('Arial"; background:url(x)'))
 

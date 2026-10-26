@@ -1,14 +1,21 @@
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from '../editor/elementOps'
 import { clamp, clampBounds } from '../editor/geometry'
-import { isSafeFontName } from '../model/fonts'
+import { checkFontSrc } from '../model/fontFormats'
+import { isReservedFontName, isSafeFontName } from '../model/fonts'
 import {
   MAX_ALT_LENGTH,
   MAX_ELEMENTS_PER_SLIDE,
+  MAX_FONTS,
+  MAX_FONT_SRC_LENGTH,
+  MAX_FONT_SRC_MB,
   MAX_SLIDES,
   MAX_TEXT_LENGTH,
   MAX_TITLE_LENGTH,
+  MAX_TOTAL_FONT_MB,
+  MAX_TOTAL_FONT_SRC_LENGTH,
 } from '../model/limits'
 import type {
+  CustomFont,
   ImageElement,
   Presentation,
   RectElement,
@@ -361,6 +368,73 @@ function validateSlide(
   return slide
 }
 
+// Polices ajoutées par fichier. Champ facultatif (absent = aucune). Chaque police est
+// reconstruite champ par champ. Le contenu n'est contrôlé qu'en surface (mime, base64,
+// signature) : le navigateur fait la vraie validation en chargeant la police.
+function validateFonts(raw: unknown, errors: ErrorList): CustomFont[] {
+  const fonts: CustomFont[] = []
+  if (raw === undefined) return fonts
+  if (!Array.isArray(raw)) {
+    addError(errors, 'La liste des polices (fonts) doit être un tableau.')
+    return fonts
+  }
+  if (raw.length > MAX_FONTS) {
+    // On ne parcourt pas une liste démesurée : le fichier est refusé de toute façon.
+    addError(errors, `La présentation ne peut pas contenir plus de ${MAX_FONTS} polices.`)
+    return fonts
+  }
+
+  const seenNames = new Set<string>()
+  let totalLength = 0
+  raw.forEach((item: unknown, index) => {
+    const path = `Police ${index + 1}`
+    if (!isPlainObject(item)) {
+      addError(errors, `${path} : une police doit être un objet.`)
+      return
+    }
+
+    const rawName = own(item, 'name')
+    let name = ''
+    if (!isSafeFontName(rawName)) {
+      addError(errors, `${path} : le nom doit être un nom simple (lettres, chiffres, espaces, tirets).`)
+    } else if (isReservedFontName(rawName)) {
+      addError(errors, `${path} : le nom est celui d'une police courante.`)
+    } else if (seenNames.has(rawName.toLowerCase())) {
+      addError(errors, `${path} : le nom est déjà utilisé.`)
+    } else {
+      name = rawName
+      seenNames.add(rawName.toLowerCase())
+    }
+
+    const rawSrc = own(item, 'src')
+    let src = ''
+    if (typeof rawSrc !== 'string' || rawSrc === '') {
+      addError(errors, `${path} : la source doit être du texte non vide.`)
+    } else if (rawSrc.length > MAX_FONT_SRC_LENGTH) {
+      addError(errors, `${path} : la source est trop volumineuse (${MAX_FONT_SRC_MB} Mo de caractères au maximum).`)
+    } else {
+      const problem = checkFontSrc(rawSrc)
+      if (problem === 'format') {
+        addError(
+          errors,
+          `${path} : la source doit être une police encodée en base64 (data:font/woff2, woff, ttf ou otf).`,
+        )
+      } else if (problem === 'signature') {
+        addError(errors, `${path} : le contenu ne correspond pas au format de police annoncé.`)
+      } else {
+        src = rawSrc
+        totalLength += rawSrc.length
+      }
+    }
+    fonts.push({ name, src })
+  })
+
+  if (totalLength > MAX_TOTAL_FONT_SRC_LENGTH) {
+    addError(errors, `Le poids total des polices dépasse la limite de ${MAX_TOTAL_FONT_MB} Mo.`)
+  }
+  return fonts
+}
+
 // Valide la structure et reconstruit une présentation neuve. Si au moins une erreur est
 // notée, on retourne { ok: false } et la reconstruction partielle est jetée.
 export function validatePresentation(data: unknown): ParseResult {
@@ -395,6 +469,8 @@ export function validatePresentation(data: unknown): ParseResult {
     })
   }
 
+  const fonts = validateFonts(own(data, 'fonts'), errors)
+
   if (errors.count > 0) return { ok: false, errors: errors.messages }
-  return { ok: true, presentation: { version: 1, title, slides } }
+  return { ok: true, presentation: { version: 1, title, slides, fonts } }
 }

@@ -31,9 +31,10 @@ Ce projet fait partie du dépôt du portfolio de Tanguy Horard, dans le sous-dos
 - Déplacer l'élément sélectionné aux flèches du clavier (1 unité, 10 avec Maj).
 
 **Panneau de propriétés**
-- Texte : police (8 polices courantes, ou une police installée sur l'ordinateur si le fichier en nomme une autre), gras, italique, alignement (gauche, centre, droite), taille de police, couleur du texte, fond optionnel et sa couleur.
+- Texte : police (8 polices courantes, une police ajoutée par fichier, ou une police installée sur l'ordinateur si le fichier en nomme une autre), gras, italique, alignement (gauche, centre, droite), taille de police, couleur du texte, fond optionnel et sa couleur.
 - Rectangle : couleur de remplissage.
 - Image : texte alternatif.
+- Ajouter sa propre police (WOFF2, WOFF, TTF, OTF) : bouton « Ajouter une police… » sous le choix de la police d'un texte. Le fichier (2 Mo au maximum, 10 polices au plus) est intégré à la présentation, enregistré dans le navigateur avec l'API `FontFace`, proposé dans le groupe « Mes polices » et appliqué au texte sélectionné. L'ajout est une seule entrée d'historique : un Ctrl+Z retire la police et rend l'ancienne. La police voyage dans le fichier JSON et dans le PDF, pas dans le PowerPoint (voir les limites connues).
 - Tous les éléments : opacité, ordre d'empilement (premier plan, avancer, reculer, arrière-plan).
 - Rappel en lecture seule de la position et de la taille.
 
@@ -105,10 +106,10 @@ Depuis `slide-editor/` :
 
 | Commande | Rôle | Résultat constaté à la rédaction |
 | --- | --- | --- |
-| `npm test` | Lance tous les tests une fois (`vitest run`) | 58 fichiers, 1770 tests, tous passent |
+| `npm test` | Lance tous les tests une fois (`vitest run`) | 65 fichiers, 2166 tests, tous passent |
 | `npm run test:watch` | Relance les tests à chaque modification | (mode interactif, non lancé pour ce relevé) |
 | `npm run lint` | ESLint sur tout le projet | aucune erreur ni avertissement |
-| `npm run build` | Vérification des types (`tsc -b`) puis build de production dans `dist/` | réussi, 69 modules. JavaScript principal d'environ 286 ko (88 ko en gzip), plus deux fichiers chargés seulement au premier export PowerPoint : le code d'export (environ 10 ko) et PptxGenJS (environ 368 ko, 123 ko en gzip) |
+| `npm run build` | Vérification des types (`tsc -b`) puis build de production dans `dist/` | réussi, 74 modules. JavaScript principal d'environ 296 ko (91 ko en gzip), plus deux fichiers chargés seulement au premier export PowerPoint : le code d'export (environ 11 ko) et PptxGenJS (environ 368 ko, 123 ko en gzip) |
 | `npm run preview` | Sert le contenu de `dist/` pour le vérifier avant déploiement | (serveur, non lancé pour ce relevé ; la commande est présente dans `package.json`) |
 
 `npm run dev` et `npm run preview` sont des serveurs : leur présence a été vérifiée dans `package.json`, pas leur exécution.
@@ -124,12 +125,13 @@ slide-editor/
 │   ├── DECISIONS.md        choix techniques et difficultés
 │   └── screenshots/        captures à ajouter
 └── src/
-    ├── model/              données pures : types, fabriques, ids, type guards, limites, polices (fonts.ts)
+    ├── model/              données pures : types, fabriques, ids, type guards, limites, polices (fonts.ts, fontFormats.ts)
     ├── editor/             logique d'édition pure : reducer, historique, géométrie
     │   ├── reducer.ts          aiguillage des actions (switch exhaustif)
     │   ├── slideOps.ts         opérations sur les diapositives
     │   ├── elementOps.ts       opérations sur les éléments
     │   ├── presentationOps.ts  charger une présentation, renommer
+    │   ├── fontOps.ts          ajouter une police, et la règle unique pour la refuser (fontBlockReason)
     │   ├── geometry.ts         bornes, déplacement, redimensionnement, index de dépôt
     │   ├── history.ts          annuler / rétablir (snapshots)
     │   ├── addLimits.ts        règle unique pour refuser un ajout
@@ -139,12 +141,15 @@ slide-editor/
     │   ├── pptxExport.ts         export PowerPoint : plan pur (pouces, points) puis écriture avec PptxGenJS
     │   ├── pptxImages.ts         images pour PowerPoint : conversion en PNG via un canvas
     │   ├── cssColor.ts           couleur CSS vers hexadécimal PowerPoint
+    │   ├── fontFile.ts           lire un fichier de police (extension, taille, signature) en data URL
+    │   ├── fontLoader.ts         charger la police dans le navigateur (FontFace), avec délai maximal
     │   └── imageUrl.ts, imageSize.ts, imageElement.ts, readImageFile.ts, readTextFile.ts, download.ts
     ├── hooks/              branchement de la logique sur React
     │   ├── EditorProvider.tsx, EditorContext.ts, useEditor.ts   le store
     │   ├── useElementGesture.ts    déplacer et redimensionner
     │   ├── useThumbnailDrag.ts     glisser les vignettes
     │   ├── useKeyboardShortcuts.ts raccourcis
+    │   ├── useDocumentFonts.ts     garde document.fonts synchronisé avec les polices de la présentation (et dit quand plus rien ne charge)
     │   └── useElementSize.ts       mesure de la zone d'édition
     ├── components/         interface
     │   ├── layout/             EditorLayout (seul composant relié au store), bandeau, titre
@@ -172,6 +177,12 @@ L'export produit un fichier JSON indenté, de cette forme (exemple raccourci) :
 {
   "version": 1,
   "title": "Ma présentation",
+  "fonts": [
+    {
+      "name": "Fira Code",
+      "src": "data:font/woff2;base64,d09GMgABAAAAA..."
+    }
+  ],
   "slides": [
     {
       "id": "d4f1c2a0-0000-4000-8000-000000000001",
@@ -207,6 +218,7 @@ L'export produit un fichier JSON indenté, de cette forme (exemple raccourci) :
 
 - **`version`** : toujours `1`. Il sert à reconnaître le format pour pouvoir migrer d'anciens fichiers plus tard. Aujourd'hui, toute autre valeur est refusée.
 - **`title`** : texte, nettoyé des espaces en début et fin, tronqué à 200 caractères (sans erreur). S'il est absent, l'import met « Sans titre ».
+- **`fonts`** (facultatif, absent = aucune police ajoutée) : tableau de 10 polices au plus, chacune avec un `name` et un `src`. Le `name` suit la règle des noms de police (voir `fontFamily` ci-dessous), ne peut pas être celui d'une des 8 polices courantes (casse ignorée) et doit être unique dans le fichier (casse ignorée). Le `src` est une data URL en base64 de la forme `data:font/woff2;base64,...` (aussi `font/woff`, `font/ttf`, `font/otf`), de 3 Mo de caractères au plus, 8 Mo cumulés pour toutes les polices. Les premiers octets décodés doivent correspondre au format annoncé (WOFF2, WOFF, TrueType ou OpenType) : ce contrôle de surface écarte les fichiers qui n'ont rien d'une police, mais la vraie validation est faite par le navigateur quand il charge la police. Un texte peut utiliser une de ces polices en la nommant dans `fontFamily`. Voir `docs/DECISIONS.md`, décision 13.
 - **`slides`** : au moins 1 diapositive, 200 au maximum. Chacune a un `id` et une liste `elements`.
 - **L'ordre de `elements` est l'ordre d'empilement** : le dernier élément est au premier plan. Il n'y a pas de champ `z-index`.
 - **Champs communs** à tous les éléments : `id`, `type` (`"text"`, `"rect"` ou `"image"`), `x`, `y`, `width`, `height` (espace logique 1280 x 720) et `opacity` (de 0 à 1, facultatif, 1 par défaut).
@@ -225,6 +237,10 @@ L'export produit un fichier JSON indenté, de cette forme (exemple raccourci) :
 | Éléments par diapositive | 500 |
 | Caractères par texte | 10 000 |
 | Caractères par nom de police | 64 |
+| Polices ajoutées par présentation | 10 |
+| Police ajoutée depuis un fichier local | 2 Mo |
+| Une police par fichier JSON importé | 3 Mo de caractères de `src` |
+| Poids cumulé des polices de la présentation | 8 Mo de caractères de `src` |
 | Poids cumulé des images de la présentation (appliqué à l'ajout ou à la copie d'un élément image) | 15 Mo de caractères de `src` |
 | Image ajoutée depuis un fichier local | 2 Mo |
 | Une image par fichier JSON importé | 4 Mo de caractères de `src` |
@@ -262,7 +278,16 @@ Ces points ne sont pas dans le projet, par choix de périmètre (l'export PDF en
 - **Export PowerPoint : le rendu n'est pas garanti identique à l'écran.** Le texte reprend la police choisie (Arial si aucune), mais le fichier ne contient que son nom : la police doit être installée sur l'ordinateur qui ouvre le fichier PowerPoint. Les 8 polices courantes y sont presque toujours, une autre police (par exemple « Calibri » venue d'un fichier importé) est signalée par un avertissement à la fin de l'export. Les coupures de lignes et l'interligne peuvent différer légèrement : l'interligne est fixé à 1,25 fois la taille de police, comme à l'écran, mais chaque logiciel place la première ligne à sa façon. Un texte plus long que sa boîte déborde au lieu d'être coupé. L'opacité d'un texte devient la transparence du texte PowerPoint ; une ancienne version de LibreOffice peut l'ignorer (non vérifié).
 - **Pas d'export .odp natif.** Pour obtenir un fichier OpenDocument, ouvrir le .pptx dans LibreOffice Impress puis « Enregistrer sous » au format .odp.
 - **Le fichier .pptx produit n'est pas vérifié automatiquement dans PowerPoint ou LibreOffice** : les tests contrôlent le contenu de l'archive (diapositives, positions, couleurs, transparence), pas son affichage. À ouvrir à la main dans les logiciels visés.
-- **Les polices listées sont des polices système : leur rendu dépend de l'ordinateur** (Arial, Georgia... sont présentes sur Windows et macOS, pas toujours sous Linux). Dans le PowerPoint, la police doit être installée sur l'ordinateur qui ouvre le fichier. Le choix de la police ne propose que ces 8 polices ; ajouter une police depuis un fichier n'est pas encore possible.
+- **Les polices listées sont des polices système : leur rendu dépend de l'ordinateur** (Arial, Georgia... sont présentes sur Windows et macOS, pas toujours sous Linux). Dans le PowerPoint, la police doit être installée sur l'ordinateur qui ouvre le fichier. Pour ne pas dépendre du poste, on peut ajouter sa propre police depuis un fichier (voir ci-dessous).
+- **Polices ajoutées par fichier :**
+  - Il n'y a pas d'interface pour SUPPRIMER une police ajoutée : on peut seulement annuler l'ajout (Ctrl+Z) tant qu'il est dans l'historique. Une police ajoutée mais plus utilisée reste dans le fichier JSON (et lui donne son poids).
+  - La licence de la police est de la responsabilité de l'utilisateur : l'éditeur ne la vérifie pas, et la police est copiée dans le fichier JSON, donc redistribuée avec lui. L'interface rappelle de vérifier que la licence autorise cette intégration.
+  - La police n'est PAS intégrée au fichier PowerPoint (PptxGenJS ne sait pas le faire) : l'export garde son nom et signale par un avertissement qu'elle doit être installée sur l'ordinateur qui ouvre le fichier.
+  - Dans le PDF, les polices utilisées sont intégrées par l'impression du navigateur, à condition que le navigateur ait accepté de les charger ; sinon le texte retombe sur une police de repli. L'impression attend (5 secondes au plus, en tout) la fin du chargement des polices, y compris celles d'un import ou d'un rétablir tout récents ; au delà elle part quand même. Cette intégration n'est pas vérifiée automatiquement (jsdom n'imprime pas et n'a ni `FontFace` ni `document.fonts`) : à essayer à la main dans un navigateur.
+  - Une police que le navigateur refuse (par exemple venue d'un JSON importé dont le contenu est corrompu) RESTE dans la présentation, faute d'interface pour la retirer : l'erreur n'est affichée qu'une fois, la police n'est pas retentée tant que sa source ne change pas, et le texte qui la nomme s'affiche avec une police de repli.
+  - Pendant un chargement, importer une autre présentation annule l'ajout en cours (« Ajout de police annulé : la présentation a changé pendant le chargement. »). L'ajout est aussi indisponible pendant la présentation, l'impression et l'export PowerPoint : le bouton est grisé et la raison est écrite sous lui.
+  - Le contrôle des premiers octets ne remplace pas la validation du navigateur : une police valide au début mais corrompue ensuite est refusée au chargement (message d'erreur), pas à la lecture du fichier.
+  - Ajouter une police charge le fichier deux fois dans le navigateur (une fois pour la valider, une fois pour l'enregistrer) : sans conséquence visible pour 2 Mo.
 - **Rien n'est conservé si on recharge la page** : l'état vit en mémoire. Il faut exporter en JSON pour garder son travail.
 - **Pas d'adaptation au mobile ni aux petits écrans** : la mise en page à trois colonnes a des largeurs fixes pour les panneaux latéraux, et l'éditeur n'est pas responsive. Le glisser des vignettes est désactivé au toucher (les boutons Monter / Descendre servent d'alternative).
 - **Le clavier ne couvre pas tout** : les flèches déplacent l'élément sélectionné, mais le redimensionnement ne se fait qu'à la souris (les poignées ne sont pas atteignables au clavier). Les lecteurs d'écran ne reçoivent pas d'annonce après un annuler / rétablir.

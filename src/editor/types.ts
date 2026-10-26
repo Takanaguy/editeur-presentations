@@ -1,4 +1,4 @@
-import type { Presentation, SlideElement } from '../model/types'
+import type { CustomFont, Presentation, SlideElement } from '../model/types'
 import type { Bounds } from './geometry'
 
 export interface EditorState {
@@ -63,4 +63,8 @@ export type PresentationAction =
   | { type: 'presentation/load'; presentation: Presentation }
   | { type: 'presentation/rename'; title: string }
 
-export type EditorAction = SlideAction | ElementAction | PresentationAction
+// Ajoute une police à la présentation (fabriquée et chargée par l'appelant : le reducer reste
+// pur). Refusée, avec le MÊME state, si fontBlockReason (fontOps.ts) donne une raison.
+export type FontAction = { type: 'font/add'; font: CustomFont }
+
+export type EditorAction = SlideAction | ElementAction | PresentationAction | FontAction

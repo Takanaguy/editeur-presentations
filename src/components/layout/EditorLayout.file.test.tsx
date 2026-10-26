@@ -46,7 +46,7 @@ function makeImported(): Presentation {
     ...createSlide(),
     elements: [createTextElement({ text })],
   }))
-  return { version: 1, title: 'Importée', slides }
+  return { version: 1, title: 'Importée', slides, fonts: [] }
 }
 
 // Version synchrone pour les tests à minuteurs factices (userEvent s'y bloque).
@@ -117,7 +117,7 @@ describe('EditorLayout : export', () => {
 
   it('n\'exporte pas une présentation que l\'import refuserait, et affiche l\'erreur', async () => {
     const slide = { ...createSlide(), elements: [createTextElement({ text: 'a'.repeat(10001) })] }
-    renderLayout({ version: 1, title: 'Trop long', slides: [slide] })
+    renderLayout({ version: 1, title: 'Trop long', slides: [slide], fonts: [] })
 
     await exportJson()
 
@@ -436,7 +436,7 @@ describe('EditorLayout : bandeau de message', () => {
   it('l\'erreur reste affichée sans limite de temps', () => {
     vi.useFakeTimers()
     const slide = { ...createSlide(), elements: [createTextElement({ text: 'a'.repeat(10001) })] }
-    renderLayout({ version: 1, title: 'T', slides: [slide] })
+    renderLayout({ version: 1, title: 'T', slides: [slide], fonts: [] })
 
     exportJsonSync()
     act(() => {

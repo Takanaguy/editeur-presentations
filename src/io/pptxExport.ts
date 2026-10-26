@@ -217,6 +217,7 @@ function createWarnings() {
 // le dernier est au premier plan, comme à l'écran. Ne modifie pas la présentation.
 export function buildPptxPlan(presentation: Presentation, images: LoadedImages): PptxPlan {
   const warnings = createWarnings()
+  const customFontNames = new Set(presentation.fonts.map((font) => font.name))
 
   const slides = presentation.slides.map((slide, slideIndex): PlanSlide => {
     const slideLabel = `Diapositive ${slideIndex + 1}`
@@ -251,8 +252,12 @@ export function buildPptxPlan(presentation: Presentation, images: LoadedImages):
       // Toute autre famille doit être installée sur l'ordinateur qui ouvrira le fichier
       // (le fichier PowerPoint ne contient que le nom de la police, pas la police elle-même).
       if (element.fontFamily !== null && !isBuiltInFont(element.fontFamily)) {
+        // Une police ajoutée à la présentation n'est pas non plus dans le fichier PowerPoint :
+        // on le dit autrement, car l'utilisateur la voit bien dans l'éditeur.
         warnings.add(
-          `La police « ${element.fontFamily} » doit être installée sur l'ordinateur qui ouvre le fichier PowerPoint.`,
+          customFontNames.has(element.fontFamily)
+            ? `La police « ${element.fontFamily} » est ajoutée à la présentation mais n'est pas intégrée au fichier PowerPoint : elle doit être installée sur l'ordinateur qui l'ouvre.`
+            : `La police « ${element.fontFamily} » doit être installée sur l'ordinateur qui ouvre le fichier PowerPoint.`,
         )
       }
       return {

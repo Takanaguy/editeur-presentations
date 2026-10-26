@@ -1,8 +1,8 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useId, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from '../../editor/elementOps'
 import type { ElementChanges, ReorderTarget } from '../../editor/types'
-import { BUILT_IN_FONTS, isBuiltInFont } from '../../model/fonts'
-import { MAX_ALT_LENGTH } from '../../model/limits'
+import { BUILT_IN_FONTS, cssFontFamily, isBuiltInFont } from '../../model/fonts'
+import { MAX_ALT_LENGTH, MAX_FONT_FILE_MB } from '../../model/limits'
 import type {
   ElementType,
   ImageElement,
@@ -42,7 +42,17 @@ interface CanReorder {
   back: boolean
 }
 
-interface PropertiesPanelProps {
+// Ce dont le champ Police a besoin pour les polices ajoutées par fichier.
+interface FontProps {
+  // Noms des polices ajoutées à la présentation.
+  customFonts: string[]
+  onAddFont: (file: File) => void
+  // Faux quand une limite interdit d'en ajouter : le bouton est alors désactivé.
+  canAddFont: boolean
+  addFontDisabledReason?: string
+}
+
+interface PropertiesPanelProps extends FontProps {
   element: SlideElement | null
   onUpdate: (changes: ElementChanges) => void
   // Appelé quand un champ perd le focus : coupe la fusion des modifications d'historique.
@@ -58,7 +68,12 @@ export function PropertiesPanel({
   onSeal,
   onReorder,
   canReorder,
+  customFonts,
+  onAddFont,
+  canAddFont,
+  addFontDisabledReason,
 }: PropertiesPanelProps) {
+  const fontProps: FontProps = { customFonts, onAddFont, canAddFont, addFontDisabledReason }
   return (
     <aside
       aria-label="Propriétés"
@@ -74,6 +89,7 @@ export function PropertiesPanel({
           onSeal={onSeal}
           onReorder={onReorder}
           canReorder={canReorder}
+          fontProps={fontProps}
         />
       ) : (
         <p className="mt-3 text-sm text-slate-500">Aucun élément sélectionné</p>
@@ -91,13 +107,23 @@ interface FieldsProps<T extends SlideElement> {
 interface ElementFieldsProps extends FieldsProps<SlideElement> {
   onReorder: (to: ReorderTarget) => void
   canReorder: CanReorder
+  fontProps: FontProps
 }
 
-function ElementFields({ element, onUpdate, onSeal, onReorder, canReorder }: ElementFieldsProps) {
+function ElementFields({
+  element,
+  onUpdate,
+  onSeal,
+  onReorder,
+  canReorder,
+  fontProps,
+}: ElementFieldsProps) {
   return (
     <div className="mt-3 flex flex-col gap-3">
       <h3 className="text-sm font-medium text-slate-600">{TYPE_LABELS[element.type]}</h3>
-      {element.type === 'text' && <TextFields element={element} onUpdate={onUpdate} onSeal={onSeal} />}
+      {element.type === 'text' && (
+        <TextFields element={element} onUpdate={onUpdate} onSeal={onSeal} fontProps={fontProps} />
+      )}
       {element.type === 'rect' && <RectFields element={element} onUpdate={onUpdate} onSeal={onSeal} />}
       {element.type === 'image' && (
         <ImageFields element={element} onUpdate={onUpdate} onSeal={onSeal} />
@@ -309,18 +335,37 @@ function OrderButtons({ onReorder, canReorder }: OrderButtonsProps) {
   )
 }
 
-function FontField({ element, onUpdate, onSeal }: FieldsProps<TextElement>) {
+interface FontFieldProps extends FieldsProps<TextElement> {
+  fontProps: FontProps
+}
+
+function FontField({ element, onUpdate, onSeal, fontProps }: FontFieldProps) {
   const id = useId()
+  const helpId = useId()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const { customFonts, onAddFont, canAddFont, addFontDisabledReason } = fontProps
   const { fontFamily } = element
-  // Police ni par défaut ni dans la liste (par exemple « Calibri » venue d'un fichier importé) :
-  // on la montre pour que l'état soit visible et qu'un autre choix ne soit pas fait par erreur.
-  const unlisted = fontFamily !== null && !isBuiltInFont(fontFamily) ? fontFamily : null
+  // Police ni par défaut, ni dans la liste, ni ajoutée (par exemple « Calibri » venue d'un
+  // fichier importé) : on la montre pour que l'état soit visible et qu'un autre choix ne soit
+  // pas fait par erreur.
+  const unlisted =
+    fontFamily !== null && !isBuiltInFont(fontFamily) && !customFonts.includes(fontFamily)
+      ? fontFamily
+      : null
 
   function change(value: string) {
     // Un choix est une intention complète : on coupe aussitôt la fusion de l'historique, sinon
     // deux choix successifs (même clé de fusion) ne feraient qu'une entrée.
     onUpdate({ fontFamily: value || null })
     onSeal()
+  }
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget
+    const file = input.files?.[0]
+    if (file) onAddFont(file)
+    // Vidé pour pouvoir choisir deux fois de suite le même fichier.
+    input.value = ''
   }
 
   return (
@@ -336,6 +381,15 @@ function FontField({ element, onUpdate, onSeal }: FieldsProps<TextElement>) {
       >
         <option value="">Police par défaut</option>
         {unlisted !== null && <option value={unlisted}>{unlisted} (non listée)</option>}
+        {customFonts.length > 0 && (
+          <optgroup label="Mes polices">
+            {customFonts.map((name) => (
+              <option key={name} value={name} style={{ fontFamily: cssFontFamily(name) }}>
+                {name}
+              </option>
+            ))}
+          </optgroup>
+        )}
         <optgroup label="Polices courantes">
           {BUILT_IN_FONTS.map((font) => (
             // Chaque option est écrite dans sa police (ignoré par les navigateurs qui ne le gèrent pas).
@@ -345,11 +399,37 @@ function FontField({ element, onUpdate, onSeal }: FieldsProps<TextElement>) {
           ))}
         </optgroup>
       </select>
+      <button
+        type="button"
+        className={BUTTON_CLASS}
+        disabled={!canAddFont}
+        title={canAddFont ? undefined : addFontDisabledReason}
+        aria-describedby={helpId}
+        onClick={() => fileInputRef.current?.click()}
+      >
+        Ajouter une police…
+      </button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".woff2,.woff,.ttf,.otf"
+        hidden
+        aria-label="Ajouter une police (WOFF2, WOFF, TTF ou OTF)"
+        onChange={handleFileChange}
+      />
+      <p id={helpId} className="text-xs text-slate-500">
+        {/* La raison est visible (pas seulement en infobulle) et lue avec le bouton désactivé. */}
+        {!canAddFont && addFontDisabledReason && (
+          <span className="mb-1 block font-medium text-slate-700">{addFontDisabledReason}</span>
+        )}
+        WOFF2, WOFF, TTF ou OTF, {MAX_FONT_FILE_MB} Mo maximum. Vérifiez que la licence de la
+        police autorise son intégration.
+      </p>
     </div>
   )
 }
 
-function TextFields({ element, onUpdate, onSeal }: FieldsProps<TextElement>) {
+function TextFields({ element, onUpdate, onSeal, fontProps }: FontFieldProps) {
   const sizeId = useId()
   const fillToggleId = useId()
   // Brouillon de la taille, en texte pour pouvoir effacer et retaper. null = pas de
@@ -375,7 +455,7 @@ function TextFields({ element, onUpdate, onSeal }: FieldsProps<TextElement>) {
 
   return (
     <>
-      <FontField element={element} onUpdate={onUpdate} onSeal={onSeal} />
+      <FontField element={element} onUpdate={onUpdate} onSeal={onSeal} fontProps={fontProps} />
       <TextStyleButtons element={element} onUpdate={onUpdate} onSeal={onSeal} />
       <div className="flex items-center justify-between gap-2">
         <label htmlFor={sizeId} className={LABEL_CLASS}>

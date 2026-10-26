@@ -42,7 +42,7 @@ const ELEMENT_LIMIT = `Limite de ${MAX_ELEMENTS_PER_SLIDE} éléments par diapos
 describe('EditorLayout : limite de diapositives', () => {
   function makeAlmostFull(): Presentation {
     const slides = Array.from({ length: MAX_SLIDES - 1 }, () => createSlide())
-    return { version: 1, title: 'Test', slides }
+    return { version: 1, title: 'Test', slides, fonts: [] }
   }
 
   it('désactive Nouvelle diapositive et Dupliquer à la limite, avec une infobulle', async () => {
@@ -80,7 +80,7 @@ describe('EditorLayout : limite d\'éléments par diapositive', () => {
   function makeAlmostFull(): Presentation {
     const slide = createSlide()
     slide.elements = Array.from({ length: MAX_ELEMENTS_PER_SLIDE - 1 }, () => createRectElement())
-    return { version: 1, title: 'Test', slides: [slide] }
+    return { version: 1, title: 'Test', slides: [slide], fonts: [] }
   }
 
   it('désactive les ajouts et la duplication à la limite, avec une infobulle', async () => {

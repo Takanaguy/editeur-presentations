@@ -13,7 +13,7 @@ function imageOfLength(length: number) {
 }
 
 function presentationOf(...slides: Slide[]): Presentation {
-  return { version: 1, title: 'Test', slides }
+  return { version: 1, title: 'Test', slides, fonts: [] }
 }
 
 describe('addBlockReason', () => {

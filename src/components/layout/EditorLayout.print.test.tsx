@@ -6,6 +6,7 @@ import { useEditor } from '../../hooks/useEditor'
 import { serializePresentation } from '../../io/presentationJson'
 import { createImageElement, createSlide } from '../../model/factories'
 import type { Presentation } from '../../model/types'
+import { installFakeFonts, type FakeFontEnv } from '../../test/fakeFonts'
 import { createThreeSlidePresentation } from '../../test/fixtures'
 import { EditorLayout } from './EditorLayout'
 
@@ -37,7 +38,7 @@ const printView = () => screen.queryByTestId('print-view')
 // Présentation avec une image : il y a alors quelque chose à décoder avant d'imprimer.
 function withImage(): Presentation {
   const slide = { ...createSlide(), elements: [createImageElement('data:image/png;base64,AAAA')] }
-  return { version: 1, title: 'Images', slides: [slide] }
+  return { version: 1, title: 'Images', slides: [slide], fonts: [] }
 }
 
 async function choosePdf() {
@@ -452,5 +453,97 @@ describe("EditorLayout : contenu figé pendant l'impression", () => {
     await choosePdf()
 
     expect(screen.getAllByTestId('print-page')).toHaveLength(2)
+  })
+})
+
+describe('EditorLayout : export PDF et polices ajoutées', () => {
+  let env: FakeFontEnv
+
+  beforeEach(() => {
+    env = installFakeFonts()
+  })
+
+  afterEach(() => {
+    env.restore()
+  })
+
+  it("attend document.fonts.ready avant d'imprimer", async () => {
+    let fontsLoaded: () => void = () => {}
+    env.setReady(new Promise<void>((resolve) => (fontsLoaded = resolve)))
+    renderLayout()
+
+    await choosePdf()
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(print).not.toHaveBeenCalled()
+
+    await act(async () => fontsLoaded())
+
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1))
+  })
+
+  it('imprime quand même après 5 secondes si document.fonts.ready ne se résout jamais', async () => {
+    vi.useFakeTimers()
+    env.setReady(new Promise<void>(() => {}))
+    renderLayout()
+
+    choosePdfSync()
+    await flush(4999)
+    expect(print).not.toHaveBeenCalled()
+    await flush(1)
+
+    expect(print).toHaveBeenCalledTimes(1)
+  })
+
+  it('imprime quand même si document.fonts.ready est rejetée', async () => {
+    const rejected = Promise.reject(new Error('échec'))
+    // Marquée comme traitée tout de suite : seul le composant doit s'en occuper.
+    rejected.catch(() => {})
+    env.setReady(rejected)
+    renderLayout()
+
+    await choosePdf()
+
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1))
+  })
+
+  it('attend à la fois les images et les polices', async () => {
+    let fontsLoaded: () => void = () => {}
+    let finishDecode: () => void = () => {}
+    env.setReady(new Promise<void>((resolve) => (fontsLoaded = resolve)))
+    setDecode(() => new Promise<void>((resolve) => (finishDecode = resolve)))
+    renderLayout(withImage())
+
+    await choosePdf()
+    await act(async () => fontsLoaded())
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(print).not.toHaveBeenCalled()
+    await act(async () => finishDecode())
+
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1))
+  })
+
+  it('sans document.fonts (vieux navigateur), imprime sans attendre', async () => {
+    env.restore()
+    renderLayout()
+
+    await choosePdf()
+
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1))
+  })
+
+  it('un seul appel à print, même sous StrictMode', async () => {
+    renderLayout(createThreeSlidePresentation(), true)
+
+    await choosePdf()
+    await waitFor(() => expect(print).toHaveBeenCalled())
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+
+    expect(print).toHaveBeenCalledTimes(1)
   })
 })

@@ -52,9 +52,19 @@ export interface Slide {
   elements: SlideElement[]
 }
 
+// Police ajoutée par l'utilisateur depuis un fichier, intégrée à la présentation.
+export interface CustomFont {
+  // Nom de famille unique (sans tenir compte de la casse) : c'est ce que stocke `fontFamily`.
+  name: string
+  // Data URL base64 de la police (`data:font/woff2;base64,...`), comme une image intégrée.
+  src: string
+}
+
 export interface Presentation {
   // Numéro de version du format, pour pouvoir migrer d'anciens fichiers plus tard.
   version: 1
   title: string
   slides: Slide[]
+  // Polices ajoutées par fichier ([] = aucune).
+  fonts: CustomFont[]
 }

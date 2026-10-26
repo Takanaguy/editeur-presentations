@@ -58,7 +58,7 @@ function imageOfLength(length: number) {
 function heavyPresentation(margin: number): Presentation {
   const slide = createSlide()
   slide.elements = [imageOfLength(MAX_TOTAL_IMAGE_SRC_LENGTH - margin)]
-  return { version: 1, title: 'Lourde', slides: [slide] }
+  return { version: 1, title: 'Lourde', slides: [slide], fonts: [] }
 }
 
 // Sélectionne l'image lourde (premier clic sur l'image de la zone d'édition).
@@ -72,7 +72,7 @@ async function selectHeavyImage() {
 function almostFullSlide(): Presentation {
   const slide = createSlide()
   slide.elements = Array.from({ length: MAX_ELEMENTS_PER_SLIDE - 1 }, () => createRectElement())
-  return { version: 1, title: 'Pleine', slides: [slide] }
+  return { version: 1, title: 'Pleine', slides: [slide], fonts: [] }
 }
 
 describe('EditorLayout : poids total des images', () => {

@@ -87,6 +87,7 @@ describe('aller-retour', () => {
   const original: Presentation = {
     version: 1,
     title: 'Ma présentation',
+    fonts: [],
     slides: [
       {
         id: 's1',
@@ -614,6 +615,7 @@ describe('élément texte', () => {
     const presentation: Presentation = {
       version: 1,
       title: 'Polices',
+      fonts: [],
       slides: [
         {
           id: 's1',
@@ -871,7 +873,7 @@ describe('clés dangereuses et champs inconnus', () => {
       '{"version":1,"title":"x","__proto__":{"polluted":true},"constructor":{"prototype":{"polluted":true}},"toString":"x","slides":[{"id":"s","elements":[]}]}'
     const presentation = expectOk(parsePresentation(json))
     expect(({} as Record<string, unknown>).polluted).toBeUndefined()
-    expect(Object.keys(presentation).sort()).toEqual(['slides', 'title', 'version'])
+    expect(Object.keys(presentation).sort()).toEqual(['fonts', 'slides', 'title', 'version'])
     expect(Object.hasOwn(presentation, '__proto__')).toBe(false)
     expect(Object.hasOwn(presentation, 'constructor')).toBe(false)
     expect(Object.hasOwn(presentation, 'toString')).toBe(false)
@@ -1090,6 +1092,7 @@ describe('prepareExport', () => {
   const small: Presentation = {
     version: 1,
     title: 'Été 2026',
+    fonts: [],
     slides: [{ id: 's1', elements: [] }],
   }
 
@@ -1102,6 +1105,7 @@ describe('prepareExport', () => {
     const bad: Presentation = {
       version: 1,
       title: 'Trop',
+      fonts: [],
       slides: [
         {
           id: 's1',
@@ -1138,6 +1142,7 @@ describe('prepareExport', () => {
     const huge: Presentation = {
       version: 1,
       title: tripleByte,
+      fonts: [],
       slides: [{ id: 's1', elements: [] }],
     }
     expect(prepareExport(huge)).toEqual({ ok: false, message: 'La présentation dépasse 25 Mo.' })

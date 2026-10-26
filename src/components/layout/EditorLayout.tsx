@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { addBlockReason } from '../../editor/addLimits'
+import { FONT_COUNT_LIMIT_MESSAGE, fontBlockReason } from '../../editor/fontOps'
 import { canRedo, canUndo } from '../../editor/history'
 import type { ElementChanges, ReorderTarget } from '../../editor/types'
 import { useEditor } from '../../hooks/useEditor'
+import { useDocumentFonts } from '../../hooks/useDocumentFonts'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
 import { downloadBlob, downloadTextFile } from '../../io/download'
+import { FontImportError, readFontFile } from '../../io/fontFile'
+import { getDocumentFonts, loadFontFace } from '../../io/fontLoader'
 import { createImageElementFitted } from '../../io/imageElement'
 import { measureImage } from '../../io/imageSize'
 import { altFromImageUrl } from '../../io/imageUrl'
@@ -17,8 +21,9 @@ import {
 import { ImageImportError, readImageFile } from '../../io/readImageFile'
 import { TextFileReadError, readTextFile } from '../../io/readTextFile'
 import { createRectElement, createTextElement } from '../../model/factories'
-import { MAX_ELEMENTS_PER_SLIDE, MAX_SLIDES } from '../../model/limits'
-import type { Slide, SlideElement } from '../../model/types'
+import { uniqueFontName } from '../../model/fontFormats'
+import { MAX_ELEMENTS_PER_SLIDE, MAX_FONTS, MAX_SLIDES } from '../../model/limits'
+import type { CustomFont, Presentation, Slide, SlideElement } from '../../model/types'
 import { SlideCanvas } from '../canvas/SlideCanvas'
 import { PresentationMode } from '../presentation/PresentationMode'
 import { PrintView } from '../print/PrintView'
@@ -34,7 +39,7 @@ import { TitleField } from './TitleField'
 // Durée d'affichage d'un message de succès avant fermeture automatique.
 const SUCCESS_NOTICE_MS = 5000
 
-// Attente maximale du décodage des images avant d'imprimer quand même.
+// Attente maximale du décodage des images et du chargement des polices avant d'imprimer quand même.
 const IMAGE_DECODE_CAP_MS = 5000
 // Si afterprint n'arrive jamais, la vue d'impression est démontée après ce délai.
 const PRINT_FALLBACK_MS = 60_000
@@ -97,11 +102,32 @@ export function EditorLayout() {
   // l'état ACTUEL après ses await, pas celui du rendu où il a démarré.
   const currentPresentationRef = useRef(presentation)
   const presentingRef = useRef(presenting)
+  const printingRef = useRef(printing)
+  // Polices dont l'ajout vient d'être envoyé mais que `currentPresentationRef` ne montre pas encore
+  // (il n'est mis à jour qu'après un rendu) : sans elles, deux ajouts du même nom terminés dans la
+  // même fenêtre verraient le même état et prendraient le même nom.
+  const pendingFonts = useRef(new Map<string, CustomFont>())
+  // Compte les remplacements de la présentation par un import : un ajout de police qui voit ce
+  // compte changer pendant son chargement s'abandonne.
+  const presentationGeneration = useRef(0)
   useEffect(() => {
     currentSlideIdRef.current = selectedSlideId
     currentPresentationRef.current = presentation
     presentingRef.current = presenting
+    printingRef.current = printing
+    // Ces polices sont maintenant dans l'état rendu : l'état suffit.
+    for (const font of presentation.fonts) pendingFonts.current.delete(font.name.toLowerCase())
   })
+
+  // Les polices ajoutées par fichier sont enregistrées dans le navigateur (document.fonts) tant
+  // qu'elles sont dans la présentation : annuler leur ajout les désenregistre.
+  const { whenIdle: fontsIdle } = useDocumentFonts(presentation.fonts, (name) =>
+    setNotice({
+      kind: 'error',
+      title: `La police « ${name} » n'a pas pu être chargée.`,
+      messages: [],
+    }),
+  )
 
   const { slides } = presentation
   const slideIndex = slides.findIndex((s) => s.id === selectedSlideId)
@@ -317,6 +343,8 @@ export function EditorLayout() {
         return
       }
       setTitleDraft(null)
+      presentationGeneration.current += 1
+      pendingFonts.current.clear()
       dispatch({ type: 'presentation/load', presentation: result.presentation })
       const count = result.presentation.slides.length
       setNotice({
@@ -332,6 +360,98 @@ export function EditorLayout() {
           error instanceof TextFileReadError ? error.message : 'Impossible de lire le fichier.',
         ]),
       )
+    }
+  }
+
+  // Présentation courante PLUS les polices dont l'ajout est déjà envoyé : c'est l'état que le
+  // reducer verra au prochain dispatch.
+  function presentationWithPendingFonts(): Presentation {
+    const latest = currentPresentationRef.current
+    const known = new Set(latest.fonts.map((f) => f.name.toLowerCase()))
+    const extra = [...pendingFonts.current].filter(([key]) => !known.has(key)).map(([, f]) => f)
+    return extra.length === 0 ? latest : { ...latest, fonts: [...latest.fonts, ...extra] }
+  }
+
+  // Ajoute une police depuis un fichier. Le fichier est lu et chargé par le navigateur AVANT de
+  // toucher à l'état : une police refusée ne laisse aucune trace. Le texte qui était sélectionné
+  // au début reçoit la police ; l'ajout et ce choix ne forment qu'UNE entrée d'historique, donc
+  // un seul Ctrl+Z retire la police et rend l'ancienne.
+  async function addFont(file: File) {
+    if (presenting || printing || pptxRunning.current) return
+    const startSlideId = selectedSlideId
+    const startTextId = element?.type === 'text' ? element.id : null
+    const generation = presentationGeneration.current
+    // Un import a remplacé la présentation : la police ne lui était pas destinée.
+    const assertSamePresentation = () => {
+      if (generation !== presentationGeneration.current) {
+        throw new FontImportError(
+          'Ajout de police annulé : la présentation a changé pendant le chargement.',
+        )
+      }
+    }
+    setNotice(null)
+    try {
+      const read = await readFontFile(file)
+      if (!mounted.current) return
+      assertSamePresentation()
+      const before = presentationWithPendingFonts()
+      const candidate = {
+        name: uniqueFontName(
+          read.name,
+          before.fonts.map((f) => f.name),
+        ),
+        src: read.src,
+      }
+      const beforeReason = fontBlockReason(before, candidate)
+      if (beforeReason) throw new FontImportError(beforeReason)
+      // La vraie validation : le navigateur refuse une police corrompue.
+      await loadFontFace(candidate)
+
+      // Après les await : l'état a pu changer (limite atteinte, présentation ouverte ou remplacée,
+      // composant démonté, autre ajout terminé avant nous). On relit l'état ACTUEL et on
+      // revérifie, comme addImage.
+      if (!mounted.current || presentingRef.current || printingRef.current || pptxRunning.current) {
+        return
+      }
+      assertSamePresentation()
+      const latest = presentationWithPendingFonts()
+      const font = {
+        name: uniqueFontName(
+          read.name,
+          latest.fonts.map((f) => f.name),
+        ),
+        src: read.src,
+      }
+      // Le reducer refuserait en silence : on ne dispatche, et on n'annonce un succès, que si
+      // la règle (avec les ajouts déjà envoyés) l'accepte.
+      const reason = fontBlockReason(latest, font)
+      if (reason) throw new FontImportError(reason)
+
+      // Même clé de fusion pour les deux actions, puis seal : une seule entrée d'historique.
+      const key = `font-upload:${font.name}`
+      pendingFonts.current.set(font.name.toLowerCase(), font)
+      dispatch({ type: 'history/coalesced', key, action: { type: 'font/add', font } })
+      const target = currentPresentationRef.current.slides
+        .find((s) => s.id === startSlideId)
+        ?.elements.find((e) => e.id === startTextId)
+      if (target?.type === 'text' && currentSlideIdRef.current === startSlideId) {
+        dispatch({
+          type: 'history/coalesced',
+          key,
+          action: { type: 'element/update', elementId: target.id, changes: { fontFamily: font.name } },
+        })
+      }
+      dispatch({ type: 'history/seal' })
+      setNotice({ kind: 'success', title: `Police « ${font.name} » ajoutée.`, messages: [] })
+    } catch (error) {
+      if (!mounted.current) return
+      setNotice({
+        kind: 'error',
+        title: 'Ajout de police impossible',
+        messages: [
+          error instanceof FontImportError ? error.message : "Impossible d'ajouter la police.",
+        ],
+      })
     }
   }
 
@@ -425,10 +545,20 @@ export function EditorLayout() {
     const decoded = Promise.all(
       images.map((img) => (typeof img.decode === 'function' ? img.decode() : Promise.resolve()).catch(() => {})),
     )
+    // Les polices ajoutées doivent être chargées pour être intégrées au PDF. Sans l'API
+    // (vieux navigateur, jsdom), on n'attend rien.
+    // On attend d'abord que le hook ait fini d'ajouter ses polices à document.fonts (import ou
+    // rétablir récents), puis que le navigateur ait fini de les charger (ready).
+    const fontsReady = fontsIdle()
+      .then(() => getDocumentFonts()?.ready)
+      .then(
+        () => {},
+        () => {},
+      )
     const cap = new Promise<void>((resolve) => {
       capTimer = setTimeout(resolve, IMAGE_DECODE_CAP_MS)
     })
-    void Promise.race([decoded, cap]).then(() => {
+    void Promise.race([Promise.all([decoded, fontsReady]), cap]).then(() => {
       clearTimeout(capTimer)
       if (!cancelled) startPrint()
     })
@@ -439,7 +569,7 @@ export function EditorLayout() {
       clearTimeout(fallbackTimer)
       window.removeEventListener('afterprint', finish)
     }
-  }, [printSlides])
+  }, [printSlides, fontsIdle])
 
   // Mesure l'image puis l'ajoute. Toute erreur d'import est affichée dans la barre d'outils.
   async function addImage(getSrc: () => Promise<string>, alt: string) {
@@ -470,6 +600,18 @@ export function EditorLayout() {
       )
     }
   }
+
+  // Pourquoi l'ajout de police est indisponible (undefined = possible). Un seul message à la
+  // fois : le plus parlant d'abord.
+  const addFontDisabledReason = presenting
+    ? 'Indisponible pendant la présentation.'
+    : printing
+      ? "Indisponible pendant l'impression."
+      : exportingPptx
+        ? "Indisponible pendant l'export."
+        : presentation.fonts.length >= MAX_FONTS
+          ? FONT_COUNT_LIMIT_MESSAGE
+          : undefined
 
   return (
     <>
@@ -577,6 +719,10 @@ export function EditorLayout() {
             onUpdate={updateSelection}
             onSeal={() => dispatch({ type: 'history/seal' })}
             onReorder={reorderSelection}
+            customFonts={presentation.fonts.map((font) => font.name)}
+            onAddFont={(file) => void addFont(file)}
+            canAddFont={addFontDisabledReason === undefined}
+            addFontDisabledReason={addFontDisabledReason}
             canReorder={{
               front: elementIndex >= 0 && elementIndex < slide.elements.length - 1,
               back: elementIndex > 0,

@@ -32,6 +32,7 @@ function presentationOf(...slides: SlideElement[][]): Presentation {
   return {
     version: 1,
     title: 'Essai',
+    fonts: [],
     slides: slides.map((elements) => ({ ...createSlide(), elements })),
   }
 }
@@ -198,6 +199,85 @@ describe('buildPptxPlan : texte', () => {
       "La police « Calibri » doit être installée sur l'ordinateur qui ouvre le fichier PowerPoint.",
       "La police « Open Sans » doit être installée sur l'ordinateur qui ouvre le fichier PowerPoint.",
     ])
+  })
+
+  describe('polices ajoutées à la présentation', () => {
+    const added = (name: string) => ({ name, src: 'data:font/woff2;base64,d09GMgABAgMEBQYH' })
+    const ADDED_WARNING = (name: string) =>
+      `La police « ${name} » est ajoutée à la présentation mais n'est pas intégrée au fichier PowerPoint : elle doit être installée sur l'ordinateur qui l'ouvre.`
+
+    it('avertit autrement pour une police ajoutée, et reprend son nom tel quel', () => {
+      const presentation = {
+        ...presentationOf([createTextElement({ fontFamily: 'Roboto' })]),
+        fonts: [added('Roboto')],
+      }
+
+      const plan = buildPptxPlan(presentation, NO_IMAGES)
+
+      expect((plan.slides[0]!.items[0] as PlanText).fontFace).toBe('Roboto')
+      expect(plan.warnings).toEqual([ADDED_WARNING('Roboto')])
+    })
+
+    it("n'ajoute pas l'avertissement générique en plus", () => {
+      const presentation = {
+        ...presentationOf([createTextElement({ fontFamily: 'Roboto' })]),
+        fonts: [added('Roboto')],
+      }
+
+      const plan = buildPptxPlan(presentation, NO_IMAGES)
+
+      expect(plan.warnings.some((w) => w.includes("doit être installée sur l'ordinateur qui ouvre"))).toBe(false)
+    })
+
+    it('dédoublonne : un seul avertissement par police ajoutée', () => {
+      const presentation = {
+        ...presentationOf(
+          [createTextElement({ fontFamily: 'Roboto' }), createTextElement({ fontFamily: 'Roboto' })],
+          [createTextElement({ fontFamily: 'Roboto' })],
+        ),
+        fonts: [added('Roboto')],
+      }
+
+      expect(buildPptxPlan(presentation, NO_IMAGES).warnings).toEqual([ADDED_WARNING('Roboto')])
+    })
+
+    it('mélange : police ajoutée, police hors liste non ajoutée et polices courantes', () => {
+      const presentation = {
+        ...presentationOf([
+          createTextElement({ fontFamily: 'Roboto' }),
+          createTextElement({ fontFamily: 'Calibri' }),
+          createTextElement({ fontFamily: 'Georgia' }),
+          createTextElement({ fontFamily: null }),
+        ]),
+        fonts: [added('Roboto'), added('Fira Code')],
+      }
+
+      expect(buildPptxPlan(presentation, NO_IMAGES).warnings).toEqual([
+        ADDED_WARNING('Roboto'),
+        "La police « Calibri » doit être installée sur l'ordinateur qui ouvre le fichier PowerPoint.",
+      ])
+    })
+
+    it("une police ajoutée mais inutilisée ne donne aucun avertissement", () => {
+      const presentation = {
+        ...presentationOf([createTextElement({ fontFamily: 'Georgia' })]),
+        fonts: [added('Roboto')],
+      }
+
+      expect(buildPptxPlan(presentation, NO_IMAGES).warnings).toEqual([])
+    })
+
+    it.each(BUILT_IN_FONTS.map((font) => font.name))(
+      'les 8 polices courantes (%s) ne donnent aucun avertissement, même avec des polices ajoutées',
+      (name) => {
+        const presentation = {
+          ...presentationOf([createTextElement({ fontFamily: name })]),
+          fonts: [added('Roboto')],
+        }
+
+        expect(buildPptxPlan(presentation, NO_IMAGES).warnings).toEqual([])
+      },
+    )
   })
 
   it('le cadre gris d\'une image manquante garde Arial', () => {

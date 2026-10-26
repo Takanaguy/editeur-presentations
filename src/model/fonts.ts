@@ -39,12 +39,19 @@ export function isBuiltInFont(name: string): boolean {
   return BUILT_IN_FONTS.some((font) => font.name === name)
 }
 
+// Nom d'une police de la liste, sans tenir compte de la casse : une police ajoutée ne doit pas
+// pouvoir en prendre la place (« arial » désignerait quand même Arial pour le navigateur).
+export function isReservedFontName(name: string): boolean {
+  const lower = name.toLowerCase()
+  return BUILT_IN_FONTS.some((font) => font.name.toLowerCase() === lower)
+}
+
 // Valeur CSS `font-family` d'un nom de famille. undefined = ne rien poser : l'élément hérite
 // de la police par défaut. Un nom non validé ne sert JAMAIS à fabriquer une valeur CSS.
 export function cssFontFamily(fontFamily: string | null): string | undefined {
   if (fontFamily === null || !isSafeFontName(fontFamily)) return undefined
   const builtIn = BUILT_IN_FONTS.find((font) => font.name === fontFamily)
   if (builtIn) return builtIn.stack
-  // Police installée chez l'utilisateur (ou, plus tard, ajoutée par fichier) : repli générique.
+  // Police installée chez l'utilisateur ou ajoutée par fichier : repli générique.
   return `"${fontFamily}", sans-serif`
 }

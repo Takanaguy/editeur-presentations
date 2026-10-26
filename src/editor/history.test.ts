@@ -47,7 +47,7 @@ function makeHistory() {
 // Historique avec `count` diapositives vides et la diapositive d'index `selected` sélectionnée.
 function makeSlidesHistory(count: number, selected = 0) {
   const slides: Slide[] = Array.from({ length: count }, () => createSlide())
-  const presentation: Presentation = { version: 1, title: 'Test', slides }
+  const presentation: Presentation = { version: 1, title: 'Test', slides, fonts: [] }
   const history = createHistoryState(presentation)
   history.editor.selectedSlideId = slides[selected]!.id
   return { slides, history }
@@ -196,7 +196,7 @@ describe('limite de l\'historique', () => {
   function setup() {
     const rect: RectElement = createRectElement({ x: 0, y: 0, width: 100, height: 100 })
     const slide: Slide = { ...createSlide(), elements: [rect] }
-    const presentation: Presentation = { version: 1, title: 'Test', slides: [slide] }
+    const presentation: Presentation = { version: 1, title: 'Test', slides: [slide], fonts: [] }
     const initial = createHistoryState(presentation)
     const moveTo = (i: number): AppAction => ({
       type: 'element/move',
@@ -815,7 +815,7 @@ describe('immuabilité', () => {
 
 describe('import et renommage et historique', () => {
   function makeLoaded(): Presentation {
-    return { version: 1, title: 'Importée', slides: [createSlide(), createSlide()] }
+    return { version: 1, title: 'Importée', slides: [createSlide(), createSlide()], fonts: [] }
   }
 
   it('load crée UNE entrée, undo restaure l\'ancienne présentation, redo la remet', () => {
@@ -846,7 +846,7 @@ describe('import et renommage et historique', () => {
   it('load de la même présentation ou d\'une présentation vide ne crée pas d\'entrée', () => {
     const { history } = makeHistory()
     expect(run(history, { type: 'presentation/load', presentation: history.editor.presentation })).toBe(history)
-    const empty: Presentation = { version: 1, title: 'Vide', slides: [] }
+    const empty: Presentation = { version: 1, title: 'Vide', slides: [], fonts: [] }
     expect(run(history, { type: 'presentation/load', presentation: empty })).toBe(history)
   })
 

@@ -30,7 +30,7 @@ export function makeElementState() {
   const second: Slide = { ...createSlide(), elements: [other] }
 
   const state: EditorState = {
-    presentation: { version: 1, title: 'Test', slides: [first, second] },
+    presentation: { version: 1, title: 'Test', slides: [first, second], fonts: [] },
     selectedSlideId: first.id,
     selectedElementId: null,
   }

@@ -19,6 +19,6 @@ describe('createInitialState', () => {
   })
 
   it('refuse une présentation sans diapositive', () => {
-    expect(() => createInitialState({ version: 1, title: 'Vide', slides: [] })).toThrow()
+    expect(() => createInitialState({ version: 1, title: 'Vide', slides: [], fonts: [] })).toThrow()
   })
 })

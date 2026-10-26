@@ -7,7 +7,7 @@ import { deepFreeze, makeElementState } from './testHelpers'
 function makeOther(): Presentation {
   const a = { ...createSlide(), elements: [createTextElement()] }
   const b = createSlide()
-  return { version: 1, title: 'Importée', slides: [a, b] }
+  return { version: 1, title: 'Importée', slides: [a, b], fonts: [] }
 }
 
 describe('presentation/load', () => {
@@ -28,7 +28,7 @@ describe('presentation/load', () => {
 
   it('une présentation sans diapositive est refusée (même state)', () => {
     const { state } = makeElementState()
-    const empty: Presentation = { version: 1, title: 'Vide', slides: [] }
+    const empty: Presentation = { version: 1, title: 'Vide', slides: [], fonts: [] }
     expect(loadPresentation(state, empty)).toBe(state)
   })
 
