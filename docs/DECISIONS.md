@@ -144,7 +144,7 @@ En plein écran, le navigateur consomme Échap pour sortir du plein écran : l'a
 
 **Contexte.** Le projet doit pouvoir changer sans régression, et chaque comportement doit être démontré.
 
-**Décision.** Vitest, React Testing Library et jsdom. À la rédaction : 51 fichiers de test, 1343 tests, tous verts. Principes :
+**Décision.** Vitest, React Testing Library et jsdom. À la rédaction : 56 fichiers de test, 1608 tests, tous verts. Principes :
 - **La logique pure est testée sans React** : `model`, `editor`, `io`, `navigation.ts`. Ce sont les tests les plus nombreux et les plus rapides.
 - **Des aides partagées** : `firePointer` (`src/test/pointer.ts`) envoie des événements de pointeur ; `mockThumbnailLayout` (`src/test/thumbnailLayout.ts`) simule la disposition de la liste de vignettes, car jsdom renvoie des rectangles vides ; `HistorySpy`, un petit composant défini dans les tests de `EditorLayout`, lit `history.past.length` pour prouver qu'une action crée exactement le nombre voulu d'entrées d'historique ; `deepFreeze` détecte les mutations.
 - **Tests par mutation à la main des gardes critiques** : pour une garde importante (par exemple le test de l'id de diapositive après un `await`), on la retire ou on la casse dans le code, et on vérifie qu'au moins un test échoue. Un test qui reste vert sans la garde ne prouve rien. Cette pratique n'est pas outillée (il n'y a pas d'outil de mutation dans le projet).
@@ -164,6 +164,31 @@ En plein écran, le navigateur consomme Échap pour sortir du plein écran : l'a
 
 **Compromis.** Le résultat dépend du navigateur (l'utilisateur doit choisir « Enregistrer au format PDF »), et la pagination réelle n'est pas testable avec jsdom. Ctrl+P hors export n'imprime rien, car l'éditeur est masqué à l'impression.
 
+### 11. Export PowerPoint avec PptxGenJS chargé à la demande
+
+**Contexte.** Le PDF existe (décision 10) mais ne se modifie pas. Le propriétaire du projet veut un fichier PowerPoint (.pptx), qui s'ouvre aussi dans LibreOffice Impress, Google Slides et Keynote. Jusqu'ici, les seules dépendances d'exécution du projet étaient `react` et `react-dom` : tout le reste était écrit dans le projet.
+
+**Décision.** Ajouter une seule dépendance d'exécution, PptxGenJS 4 (licence MIT), et la charger à la demande avec un import dynamique (`await import('pptxgenjs')`) au premier export. Le code d'export lui-même (`pptxExport.ts`, `pptxImages.ts`, `cssColor.ts`) est aussi chargé à ce moment, par un import dynamique dans `EditorLayout`. Au build, le bundle principal passe de 280,4 ko à 284,3 ko (86,1 ko à 87,6 ko en gzip) ; le code d'export (environ 10 ko) et PptxGenJS (environ 368 ko, 123 ko en gzip) sont deux fichiers séparés, téléchargés au premier clic sur « PowerPoint ». L'entrée par défaut du paquet convient pour Vite : son champ `browser` neutralise les modules Node (`fs`, `https`, `image-size`) que la bibliothèque n'utilise que côté serveur.
+
+L'export est construit en deux couches :
+- **Un plan pur** : `buildPptxPlan(presentation, images)` traduit la présentation en diapositives décrites avec les unités de PowerPoint (pouces, points, hexadécimal sans `#`, transparence en pourcentage). Elle n'appelle ni la bibliothèque ni le navigateur, donc elle se teste avec des nombres : 96 px font 1 pouce, une police de 48 px fait 36 points, une image de 200 x 100 dans une boîte de 400 x 400 occupe 400 x 200 centrée.
+- **La colle** : `exportToPptx(presentation, deps)` charge les images, construit le plan, le confie à PptxGenJS et rend un `Blob` avec la liste des avertissements.
+
+Deux protections avant d'écrire : `sanitizeForXml` retire les caractères que le XML 1.0 interdit (contrôles, U+FFFE, U+FFFF, moitiés de paire de substitution isolées) de tout texte qui part dans le fichier, car la bibliothèque ne les filtre pas ; et les images sont chargées trois à la fois au plus (`mapWithConcurrency`), pour ne pas saturer la mémoire avec plusieurs canvas géants.
+
+Les accès au navigateur sont injectés : `loadImage` (lecture des images et conversion en PNG par un canvas, dans `pptxImages.ts`) et `loadLibrary` sont des paramètres de `exportToPptx`, et `pptxImages` reçoit lui-même un faux `Image` et un faux canvas dans les tests. On teste ainsi tout sauf le canvas réel sans navigateur, et la vraie bibliothèque est appelée dans un test d'intégration qui relit l'archive produite avec `jszip` (déclaré en devDependency : il ne sert qu'aux tests) pour vérifier les diapositives, les positions, les couleurs et les transparences.
+
+Les choix de traduction à retenir : le texte est en Arial (police présente partout, l'écran utilise la police du système) ; l'interligne est EXACT, 1,25 fois la taille en points, car un interligne « multiple » de PowerPoint part de l'interligne naturel de la police et ne retrouverait pas la valeur de l'écran ; la marge intérieure de 8 px devient 6 points ; l'opacité devient la transparence PowerPoint du fond, du texte (natif) et de l'image (natif aussi, pas besoin d'appliquer l'opacité dans le canvas) ; une image est placée dans le rectangle qu'occupe son `object-fit: contain` à l'écran ; une image illisible devient un cadre gris portant le texte alternatif, avec un avertissement qui nomme la diapositive.
+
+**Pourquoi.** Un fichier .pptx est une archive de dizaines de fichiers XML (présentation, relations, types de contenu, thème, une page XML par diapositive). PptxGenJS sait les produire correctement, et le même fichier sert à PowerPoint et à LibreOffice. Le charger à la demande évite d'alourdir le chargement de l'application pour une fonction utilisée de temps en temps. Le plan pur rend la traduction vérifiable sans ouvrir PowerPoint. Injecter `loadImage` évite de simuler un canvas dans chaque test de la traduction.
+
+**Compromis.** C'est la première dépendance d'exécution hors React, avec ce que cela suppose (mises à jour, taille : 368 ko au premier export). `npm audit` signalait deux alertes sur `image-size`, dépendance de PptxGenJS qui ne sert que sous Node et n'est pas dans le build navigateur (neutralisée par le champ `browser`, vérifié dans le fichier produit). Un `overrides` dans `package.json` impose `image-size` en version 2.0.3 ou plus : `npm audit` affiche 0 alerte, les tests avec la vraie bibliothèque passent et le fichier de PptxGenJS dans le build ne change pas de taille. Le risque est que cet override force une version majeure que PptxGenJS n'a pas testée ; il est sans effet dans le navigateur, mais à revoir si une mise à jour de PptxGenJS corrige le problème de son côté. Le rendu n'est pas identique à l'écran : polices, coupures de lignes et position de la première ligne dépendent du logiciel. Une image distante n'est incluse que si son site autorise la lecture (CORS) ; sinon un cadre gris la remplace. Le fichier produit n'est pas vérifié automatiquement dans PowerPoint ou LibreOffice : les tests contrôlent l'archive, pas l'affichage.
+
+**Alternatives écartées.**
+- **Écrire le XML OOXML à la main** : beaucoup de formats à respecter (un seul attribut faux et PowerPoint déclare le fichier corrompu), pour un résultat que PptxGenJS donne déjà. Hors de proportion pour ce projet.
+- **Exporter une image par diapositive** : simple et fidèle visuellement, mais le fichier n'est plus modifiable (le texte devient une image, non sélectionnable ni recherchable) : on perd l'intérêt d'un format éditable, que le PDF couvre déjà.
+- **Un export .odp natif** : un second format à écrire et à tester pour le même besoin. LibreOffice Impress ouvre le .pptx et sait l'enregistrer en .odp, ce qui suffit.
+
 ## Difficultés rencontrées
 
 - **(a) La saisie de texte perdue en cliquant sur le fond.** Pendant l'édition d'un texte, un clic sur le fond de la diapositive faisait perdre ce qu'on venait de taper. Cause : React applique la désélection (au `pointerdown`) avant que le navigateur ne déplace le focus ; le `textarea` est démonté sans jamais recevoir de `blur`, donc `onBlur` ne valide rien. Invisible dans les tests jsdom, trouvé en test manuel dans un vrai navigateur. Correction : un écouteur `pointerdown` en phase de capture sur `document` (dans `TextEditor.tsx`) valide la saisie avant les gestionnaires de React.
@@ -177,6 +202,7 @@ En plein écran, le navigateur consomme Échap pour sortir du plein écran : l'a
 - **(i) Après annuler, la modification pouvait être sur une autre diapositive.** On annulait et rien ne bougeait à l'écran, parce que l'action annulée concernait une autre diapositive que celle affichée. Correction : `reconcileSelection` saute à la première diapositive modifiée, repérée par comparaison de références.
 - **(j) Le démontage de React ne déclenche pas de `blur`.** Même cause que (a) vue sous un autre angle : on ne peut pas compter sur `onBlur` quand c'est un changement d'état React qui retire le champ. La validation se fait donc au `pointerdown`, avant le démontage, et pas à la perte de focus seule.
 - **(k) Un test qui semblait prouver quelque chose sans le prouver.** Exemple : un test censé vérifier l'usage de `Object.hasOwn` ne le vérifiait pas, car son jeu de données n'exerçait pas la différence avec l'héritage par prototype. Correction : relecture des tests et vérification par mutation (on retire la garde, le test doit échouer). Le test actuel (`ne lit que des propriétés propres`, dans `presentationJson.test.ts`) pollue volontairement `Object.prototype` avec des champs hérités, ce qui fait échouer l'import si la garde est retirée.
+- **(l) Caractères de contrôle dans le texte.** Le XML devenait invalide et PowerPoint aurait refusé le fichier ; trouvé en relecture, corrigé par `sanitizeForXml`, vérifié avec la vraie bibliothèque.
 
 ## Ce que je ferais ensuite
 
@@ -198,5 +224,6 @@ En plein écran, le navigateur consomme Échap pour sortir du plein écran : l'a
 - Redimensionnement uniquement à la souris.
 - Le plein écran réel et l'attribut `inert` ne sont pas couverts par les tests automatiques.
 - Une seule version de format (`version: 1`), sans migration pour l'instant.
-- Les images par adresse dépendent du site distant ; les images de fichier alourdissent le JSON.
+- Export PowerPoint : rendu proche mais pas identique à l'écran (polices installées sur le poste qui ouvre le fichier, coupures de lignes, interligne), pas d'export .odp natif (ouvrir le .pptx dans LibreOffice Impress puis l'enregistrer en .odp). Le fichier n'est pas vérifié automatiquement dans PowerPoint ou LibreOffice.
+- Les images par adresse dépendent du site distant : si l'adresse disparaît, l'image disparaît, et dans l'export PowerPoint elle n'est incluse que si le site autorise sa lecture (CORS), sinon un cadre gris la remplace. Les images de fichier alourdissent le JSON.
 - Performance non mesurée sur de très grosses présentations.

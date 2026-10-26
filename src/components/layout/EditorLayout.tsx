@@ -4,12 +4,13 @@ import { canRedo, canUndo } from '../../editor/history'
 import type { ElementChanges, ReorderTarget } from '../../editor/types'
 import { useEditor } from '../../hooks/useEditor'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
-import { downloadTextFile } from '../../io/download'
+import { downloadBlob, downloadTextFile } from '../../io/download'
 import { createImageElementFitted } from '../../io/imageElement'
 import { measureImage } from '../../io/imageSize'
 import { altFromImageUrl } from '../../io/imageUrl'
 import {
   checkImportFileSize,
+  exportFileName,
   parsePresentation,
   prepareExport,
 } from '../../io/presentationJson'
@@ -40,6 +41,18 @@ const PRINT_FALLBACK_MS = 60_000
 const PRINT_STARTED_MESSAGE =
   'La fenêtre d\'impression s\'ouvre : choisissez « Enregistrer au format PDF » comme imprimante.'
 
+// Le module d'export PowerPoint (et PptxGenJS derrière lui) n'est chargé qu'au premier export :
+// il reste hors du bundle principal.
+async function loadPptxExporter() {
+  try {
+    return (await import('../../io/pptxExport')).exportToPptx
+  } catch {
+    throw new Error(
+      "Le module d'export PowerPoint n'a pas pu être chargé. Vérifiez la connexion et réessayez.",
+    )
+  }
+}
+
 // Seul composant connecté au store : il lit l'état et passe des props aux autres.
 export function EditorLayout() {
   const { history, dispatch } = useEditor()
@@ -55,6 +68,14 @@ export function EditorLayout() {
   const [printSlides, setPrintSlides] = useState<Slide[] | null>(null)
   const printing = printSlides !== null
   const printViewRef = useRef<HTMLDivElement>(null)
+  // Export PowerPoint en cours : état d'interface, hors historique. Il désactive Exporter et
+  // Importer ; l'édition reste possible, l'export travaille sur un instantané figé au clic.
+  const [exportingPptx, setExportingPptx] = useState(false)
+  // Même information, lisible tout de suite : un second clic, avant que l'état ne soit rendu,
+  // ne doit pas lancer un deuxième export.
+  const pptxRunning = useRef(false)
+  // Faux après le démontage : un export qui se termine alors ne met plus l'état à jour.
+  const mounted = useRef(true)
   // Message d'export ou d'import sous l'en-tête : un état d'interface, hors historique.
   const [notice, setNotice] = useState<Notice | null>(null)
   // Titre en cours de saisie. Le store garde le titre nettoyé (espaces retirés) : sans ce
@@ -168,7 +189,7 @@ export function EditorLayout() {
   }
 
   function exportPresentation() {
-    if (presenting || printing) return
+    if (presenting || printing || pptxRunning.current) return
     lastFileAction.current = 'export'
     const result = prepareExport(presentation)
     if (!result.ok) {
@@ -190,10 +211,55 @@ export function EditorLayout() {
   // puis ouvre l'impression. Tant que printSlides n'est pas null, un second export est ignoré :
   // c'est ce qui garantit un seul appel à print() par export.
   function exportPdf() {
-    if (presenting || printing) return
+    if (presenting || printing || pptxRunning.current) return
     lastFileAction.current = 'export'
     setNotice(null)
     setPrintSlides(presentation.slides)
+  }
+
+  // Export PowerPoint : la présentation est figée au clic (elle est immuable, la référence
+  // suffit), le fichier est produit en tâche de fond, puis téléchargé. Aucun dispatch : ni la
+  // présentation ni l'historique ne bougent.
+  async function exportPptx() {
+    if (presenting || printing || pptxRunning.current) return
+    pptxRunning.current = true
+    lastFileAction.current = 'export'
+    const frozen = presentation
+    setExportingPptx(true)
+    setNotice({ kind: 'success', title: 'Préparation du fichier PowerPoint…', messages: [] })
+    try {
+      const exportToPptx = await loadPptxExporter()
+      const { blob, warnings } = await exportToPptx(frozen)
+      if (!mounted.current) return
+      const fileName = exportFileName(frozen.title, 'pptx')
+      if (downloadBlob(fileName, blob)) {
+        setNotice({
+          kind: 'success',
+          title: `Présentation exportée : ${fileName}`,
+          messages: warnings,
+        })
+      } else {
+        setNotice({
+          kind: 'error',
+          title: 'Export PowerPoint impossible',
+          messages: ['Le navigateur a refusé le téléchargement.'],
+        })
+      }
+    } catch (error) {
+      if (!mounted.current) return
+      setNotice({
+        kind: 'error',
+        title: 'Export PowerPoint impossible',
+        messages: [
+          error instanceof Error && error.message
+            ? error.message
+            : "Une erreur inattendue s'est produite.",
+        ],
+      })
+    } finally {
+      pptxRunning.current = false
+      if (mounted.current) setExportingPptx(false)
+    }
   }
 
   function closeNotice() {
@@ -210,6 +276,14 @@ export function EditorLayout() {
         kind: 'error',
         title: 'Import impossible',
         messages: ["Import impossible pendant l'impression."],
+      })
+      return
+    }
+    if (pptxRunning.current) {
+      setNotice({
+        kind: 'error',
+        title: 'Import impossible',
+        messages: ["Import impossible pendant l'export PowerPoint."],
       })
       return
     }
@@ -291,12 +365,22 @@ export function EditorLayout() {
   }, [presenting])
 
   // Le succès se ferme tout seul ; l'erreur reste jusqu'à fermeture ou prochaine action.
-  // Le minuteur est nettoyé au démontage et à chaque nouveau message.
+  // Restent aussi affichés : un succès accompagné d'avertissements (à lire tranquillement) et
+  // le message « Préparation » tant que l'export PowerPoint dure. Le minuteur est nettoyé au
+  // démontage et à chaque nouveau message.
   useEffect(() => {
-    if (notice?.kind !== 'success') return
+    if (notice?.kind !== 'success' || notice.messages.length > 0 || exportingPptx) return
     const timer = setTimeout(() => setNotice(null), SUCCESS_NOTICE_MS)
     return () => clearTimeout(timer)
-  }, [notice])
+  }, [notice, exportingPptx])
+
+  // Après un démontage, un export PowerPoint encore en cours ne doit rien mettre à jour.
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   // Impression : attend les images de la vue d'impression, ouvre la fenêtre d'impression, puis
   // démonte la vue à la fin (afterprint) ou après un délai de secours. Tout vit dans un seul
@@ -415,8 +499,9 @@ export function EditorLayout() {
             <FileActions
               onExportJson={exportPresentation}
               onExportPdf={exportPdf}
+              onExportPptx={() => void exportPptx()}
               onImportFile={(file) => void importFile(file)}
-              disabled={presenting || printing}
+              disabled={presenting || printing || exportingPptx}
               exportRef={exportButtonRef}
               importRef={importButtonRef}
             />

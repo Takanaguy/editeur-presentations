@@ -48,7 +48,8 @@ const MAX_IMPORT_MB = Math.round(MAX_IMPORT_FILE_SIZE / (1024 * 1024))
 const WINDOWS_RESERVED_NAMES = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/
 
 // Nom de fichier sûr dérivé du titre : lettres minuscules sans accent, chiffres et tirets.
-export function exportFileName(title: string): string {
+// L'extension (sans point) est choisie par le code appelant, jamais saisie par l'utilisateur.
+export function exportFileName(title: string, extension = 'json'): string {
   const slug = title
     .toLowerCase()
     // Ces lettres n'ont pas de décomposition NFD : on les transcrit à la main.
@@ -64,7 +65,7 @@ export function exportFileName(title: string): string {
     // La troncature peut laisser un tiret à la fin.
     .replace(/-+$/, '')
   const name = slug || 'presentation'
-  return `${WINDOWS_RESERVED_NAMES.test(name) ? 'presentation-' : ''}${name}.json`
+  return `${WINDOWS_RESERVED_NAMES.test(name) ? 'presentation-' : ''}${name}.${extension}`
 }
 
 export function checkImportFileSize(size: number): string | null {

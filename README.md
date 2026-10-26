@@ -1,6 +1,6 @@
 # Éditeur de présentations
 
-Éditeur de présentations dans le navigateur, dans l'esprit de PowerPoint : on compose des diapositives avec du texte, des rectangles et des images, on les réorganise, on les présente en plein écran, et on les enregistre dans un fichier JSON ou on les exporte en PDF. Tout tourne côté client, sans serveur ni compte.
+Éditeur de présentations dans le navigateur, dans l'esprit de PowerPoint : on compose des diapositives avec du texte, des rectangles et des images, on les réorganise, on les présente en plein écran, et on les enregistre dans un fichier JSON ou on les exporte en PDF ou en PowerPoint. Tout tourne côté client, sans serveur ni compte.
 
 Ce projet fait partie du dépôt du portfolio de Tanguy Horard, dans le sous-dossier `slide-editor/`. Il est indépendant du portfolio (son propre `package.json`).
 
@@ -42,6 +42,7 @@ Ce projet fait partie du dépôt du portfolio de Tanguy Horard, dans le sous-dos
 - Mode présentation : diapositive plein écran, navigation au clavier ou au clic.
 - Export de la présentation en fichier JSON, import d'un fichier JSON (validé, annulable).
 - Export en PDF (via l'impression du navigateur : choisir « Enregistrer au format PDF »).
+- Export PowerPoint (.pptx) : un vrai fichier modifiable (zones de texte, formes, images), qui s'ouvre dans PowerPoint, LibreOffice Impress, Google Slides et Keynote. Les images sont converties en PNG si besoin (PowerPoint ne lit pas le WebP), l'opacité devient la transparence PowerPoint, et les cas qui n'ont pas pu être traduits (image distante bloquée, couleur inconnue) sont listés dans le message de fin d'export.
 - Titre de la présentation éditable (il donne aussi le nom du fichier exporté).
 
 ## Raccourcis clavier
@@ -82,8 +83,9 @@ Aux bornes, la navigation s'arrête (pas de retour au début). Les combinaisons 
 - Tailwind CSS 4 (plugin Vite)
 - Vitest 5, React Testing Library, user-event et jsdom pour les tests
 - ESLint 10 avec typescript-eslint et eslint-plugin-react-hooks
+- PptxGenJS 4 (licence MIT) pour écrire le fichier .pptx
 
-Aucune bibliothèque pour le glisser-déposer, l'état ou la validation : tout est écrit dans le projet. Les seules dépendances d'exécution sont `react` et `react-dom`.
+Aucune bibliothèque pour le glisser-déposer, l'état ou la validation : tout est écrit dans le projet. Les dépendances d'exécution sont `react`, `react-dom` et `pptxgenjs`. `jszip` est en devDependency (les tests relisent l'archive .pptx produite), et un `overrides` dans `package.json` impose `image-size` 2.0.3 ou plus (dépendance de PptxGenJS utilisée sous Node seulement, absente du navigateur) : `npm audit` affiche 0 alerte. Cette dernière est chargée à la demande (import dynamique, au premier export PowerPoint) : elle est dans un fichier à part et n'alourdit pas le chargement de l'application.
 
 ## Lancer en local
 
@@ -103,10 +105,10 @@ Depuis `slide-editor/` :
 
 | Commande | Rôle | Résultat constaté à la rédaction |
 | --- | --- | --- |
-| `npm test` | Lance tous les tests une fois (`vitest run`) | 51 fichiers, 1343 tests, tous passent |
+| `npm test` | Lance tous les tests une fois (`vitest run`) | 56 fichiers, 1608 tests, tous passent |
 | `npm run test:watch` | Relance les tests à chaque modification | (mode interactif, non lancé pour ce relevé) |
 | `npm run lint` | ESLint sur tout le projet | aucune erreur ni avertissement |
-| `npm run build` | Vérification des types (`tsc -b`) puis build de production dans `dist/` | réussi, 61 modules, JavaScript d'environ 280 ko (86 ko compressé en gzip) |
+| `npm run build` | Vérification des types (`tsc -b`) puis build de production dans `dist/` | réussi, 68 modules. JavaScript principal d'environ 284 ko (88 ko en gzip), plus deux fichiers chargés seulement au premier export PowerPoint : le code d'export (environ 10 ko) et PptxGenJS (environ 368 ko, 123 ko en gzip) |
 | `npm run preview` | Sert le contenu de `dist/` pour le vérifier avant déploiement | (serveur, non lancé pour ce relevé ; la commande est présente dans `package.json`) |
 
 `npm run dev` et `npm run preview` sont des serveurs : leur présence a été vérifiée dans `package.json`, pas leur exécution.
@@ -134,6 +136,9 @@ slide-editor/
     │   └── state.ts, types.ts  état initial, types de l'état et des actions
     ├── io/                 entrées et sorties : JSON, images, téléchargement
     │   ├── presentationJson.ts   validation, import, export
+    │   ├── pptxExport.ts         export PowerPoint : plan pur (pouces, points) puis écriture avec PptxGenJS
+    │   ├── pptxImages.ts         images pour PowerPoint : conversion en PNG via un canvas
+    │   ├── cssColor.ts           couleur CSS vers hexadécimal PowerPoint
     │   └── imageUrl.ts, imageSize.ts, imageElement.ts, readImageFile.ts, readTextFile.ts, download.ts
     ├── hooks/              branchement de la logique sur React
     │   ├── EditorProvider.tsx, EditorContext.ts, useEditor.ts   le store
@@ -251,13 +256,16 @@ Ces points ne sont pas dans le projet, par choix de périmètre (l'export PDF en
 
 - Ctrl+P (impression native du navigateur) n'imprime rien : utiliser Exporter puis PDF.
 - **Le rendu d'impression du PDF n'a pas pu être vérifié de façon automatique** : jsdom n'imprime pas. Les tests couvrent le déclenchement, pas la pagination ni les couleurs. À essayer à la main dans un navigateur.
+- **Export PowerPoint : le rendu n'est pas garanti identique à l'écran.** Les polices doivent être installées sur l'ordinateur qui ouvre le fichier (le texte est en Arial, présente partout, mais l'éditeur affiche une police système différente). Les coupures de lignes et l'interligne peuvent différer légèrement : l'interligne est fixé à 1,25 fois la taille de police, comme à l'écran, mais chaque logiciel place la première ligne à sa façon. Un texte plus long que sa boîte déborde au lieu d'être coupé. L'opacité d'un texte devient la transparence du texte PowerPoint ; une ancienne version de LibreOffice peut l'ignorer (non vérifié).
+- **Pas d'export .odp natif.** Pour obtenir un fichier OpenDocument, ouvrir le .pptx dans LibreOffice Impress puis « Enregistrer sous » au format .odp.
+- **Le fichier .pptx produit n'est pas vérifié automatiquement dans PowerPoint ou LibreOffice** : les tests contrôlent le contenu de l'archive (diapositives, positions, couleurs, transparence), pas son affichage. À ouvrir à la main dans les logiciels visés.
 - **Rien n'est conservé si on recharge la page** : l'état vit en mémoire. Il faut exporter en JSON pour garder son travail.
 - **Pas d'adaptation au mobile ni aux petits écrans** : la mise en page à trois colonnes a des largeurs fixes pour les panneaux latéraux, et l'éditeur n'est pas responsive. Le glisser des vignettes est désactivé au toucher (les boutons Monter / Descendre servent d'alternative).
 - **Le clavier ne couvre pas tout** : les flèches déplacent l'élément sélectionné, mais le redimensionnement ne se fait qu'à la souris (les poignées ne sont pas atteignables au clavier). Les lecteurs d'écran ne reçoivent pas d'annonce après un annuler / rétablir.
 - **Le vrai plein écran du navigateur n'a pas pu être vérifié de façon automatique** : jsdom ne le gère pas, et l'aperçu intégré utilisé pendant le développement ne l'accorde pas. Les tests le simulent. À essayer à la main dans un navigateur.
 - **Pas de test de performance** avec de très grosses présentations (200 diapositives très chargées, images lourdes).
 - **Une seule version de format** : `version: 1` est la seule acceptée, aucune migration n'existe encore.
-- **Les images par URL dépendent du site distant** : si l'adresse disparaît, l'image disparaît. Les images ajoutées depuis un fichier, elles, sont dans le JSON (donc alourdissent le fichier).
+- **Les images par URL dépendent du site distant** : si l'adresse disparaît, l'image disparaît. Dans l'export PowerPoint, elle n'est incluse que si le site qui l'héberge autorise sa lecture (CORS) ; sinon elle est remplacée par un cadre gris portant le texte alternatif, et le message de fin d'export l'indique. Les images ajoutées depuis un fichier, elles, sont dans le JSON (donc alourdissent le fichier) et n'ont pas ce problème.
 - Pas de ratio verrouillé au redimensionnement, pas de guides d'alignement.
 
 ## Pour aller plus loin

@@ -3,17 +3,13 @@
 // pourrait annuler le fichier.
 const REVOKE_DELAY_MS = 1000
 
-// Déclenche le téléchargement d'un fichier texte : Blob, lien invisible, clic.
+// Déclenche le téléchargement d'un Blob : adresse temporaire, lien invisible, clic.
 // Ne plante jamais : retourne false si le navigateur n'a pas pu lancer le téléchargement,
 // pour que l'appelant n'annonce pas un export réussi à tort.
-export function downloadTextFile(
-  fileName: string,
-  text: string,
-  mimeType = 'application/json',
-): boolean {
+export function downloadBlob(fileName: string, blob: Blob): boolean {
   let url: string | null = null
   try {
-    url = URL.createObjectURL(new Blob([text], { type: mimeType }))
+    url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
     link.download = fileName
@@ -31,5 +27,18 @@ export function downloadTextFile(
   } finally {
     const created = url
     if (created !== null) setTimeout(() => URL.revokeObjectURL(created), REVOKE_DELAY_MS)
+  }
+}
+
+// Téléchargement d'un fichier texte : un Blob de ce texte.
+export function downloadTextFile(
+  fileName: string,
+  text: string,
+  mimeType = 'application/json',
+): boolean {
+  try {
+    return downloadBlob(fileName, new Blob([text], { type: mimeType }))
+  } catch {
+    return false
   }
 }

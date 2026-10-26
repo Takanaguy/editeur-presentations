@@ -204,6 +204,18 @@ describe('exportFileName', () => {
     expect(exportFileName('  Con!  ')).toBe('presentation-con.json')
   })
 
+  it('accepte une autre extension (sans point) et applique les mêmes règles', () => {
+    expect(exportFileName('Ma présentation', 'pptx')).toBe('ma-presentation.pptx')
+    expect(exportFileName('', 'pptx')).toBe('presentation.pptx')
+    expect(exportFileName('Con', 'pptx')).toBe('presentation-con.pptx')
+    expect(exportFileName('a'.repeat(100), 'pptx')).toBe(`${'a'.repeat(60)}.pptx`)
+  })
+
+  it('garde json par défaut', () => {
+    expect(exportFileName('Essai')).toBe('essai.json')
+    expect(exportFileName('Essai', 'json')).toBe('essai.json')
+  })
+
   it('ne produit que des caractères sûrs', () => {
     expect(exportFileName('<script>"x";|&$`')).toMatch(/^[a-z0-9-]+\.json$/)
   })

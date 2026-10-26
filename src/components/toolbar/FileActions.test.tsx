@@ -5,17 +5,19 @@ import { FileActions } from './FileActions'
 function setup(disabled = false) {
   const onExportJson = vi.fn()
   const onExportPdf = vi.fn()
+  const onExportPptx = vi.fn()
   const onImportFile = vi.fn()
   render(
     <FileActions
       onExportJson={onExportJson}
       onExportPdf={onExportPdf}
+      onExportPptx={onExportPptx}
       onImportFile={onImportFile}
       disabled={disabled}
     />,
   )
   const input = screen.getByLabelText('Importer une présentation JSON') as HTMLInputElement
-  return { onExportJson, onExportPdf, onImportFile, input }
+  return { onExportJson, onExportPdf, onExportPptx, onImportFile, input }
 }
 
 describe('FileActions', () => {
@@ -42,8 +44,8 @@ describe('FileActions', () => {
     expect(onExportPdf).not.toHaveBeenCalled()
   })
 
-  it('le menu propose le JSON et le PDF, chacun relié à son rappel', async () => {
-    const { onExportJson, onExportPdf } = setup()
+  it('le menu propose le JSON, le PDF et PowerPoint, chacun relié à son rappel', async () => {
+    const { onExportJson, onExportPdf, onExportPptx } = setup()
 
     await userEvent.click(screen.getByRole('button', { name: 'Exporter' }))
     await userEvent.click(screen.getByRole('menuitem', { name: /^Fichier JSON/ }))
@@ -54,6 +56,13 @@ describe('FileActions', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: /^PDF/ }))
     expect(onExportPdf).toHaveBeenCalledTimes(1)
     expect(onExportJson).toHaveBeenCalledTimes(1)
+    expect(onExportPptx).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /^PowerPoint/ }))
+    expect(onExportPptx).toHaveBeenCalledTimes(1)
+    expect(onExportJson).toHaveBeenCalledTimes(1)
+    expect(onExportPdf).toHaveBeenCalledTimes(1)
   })
 
   it('le champ fichier est caché et n\'accepte que du JSON', () => {
@@ -93,7 +102,7 @@ describe('FileActions', () => {
   })
 
   it('désactive les deux boutons quand disabled est vrai', async () => {
-    const { onExportJson, onExportPdf } = setup(true)
+    const { onExportJson, onExportPdf, onExportPptx } = setup(true)
 
     expect(screen.getByRole('button', { name: 'Exporter' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Importer' })).toBeDisabled()
@@ -101,5 +110,16 @@ describe('FileActions', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
     expect(onExportJson).not.toHaveBeenCalled()
     expect(onExportPdf).not.toHaveBeenCalled()
+    expect(onExportPptx).not.toHaveBeenCalled()
+  })
+
+  it("le libellé PowerPoint annonce que le fichier s'ouvre aussi dans LibreOffice", async () => {
+    setup()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+
+    expect(screen.getByRole('menuitem', { name: /^PowerPoint/ })).toHaveTextContent(
+      "PowerPoint (.pptx, s'ouvre aussi dans LibreOffice)",
+    )
   })
 })

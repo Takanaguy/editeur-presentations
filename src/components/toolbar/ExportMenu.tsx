@@ -157,7 +157,7 @@ export function ExportMenu({ items, disabled, buttonRef }: ExportMenuProps) {
           role="menu"
           aria-label="Exporter"
           onKeyDown={handleMenuKeyDown}
-          className="absolute top-full right-0 z-40 mt-1 w-72 rounded-md border border-slate-200 bg-white py-1 shadow-lg"
+          className="absolute top-full right-0 z-40 mt-1 w-96 rounded-md border border-slate-200 bg-white py-1 shadow-lg"
         >
           {items.map((item) => (
             <button

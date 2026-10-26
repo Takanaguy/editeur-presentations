@@ -5,8 +5,10 @@ import { FILE_BUTTON_CLASS } from './fileButtonClass'
 interface FileActionsProps {
   onExportJson: () => void
   onExportPdf: () => void
+  onExportPptx: () => void
   onImportFile: (file: File) => void
-  // Vrai pendant le mode présentation : rien ne doit partir ni arriver.
+  // Vrai pendant le mode présentation, l'impression ou un export en cours : rien ne doit partir
+  // ni arriver.
   disabled: boolean
   // Pour que le parent puisse rendre le focus au bouton qui a déclenché un message.
   exportRef?: Ref<HTMLButtonElement>
@@ -17,6 +19,7 @@ interface FileActionsProps {
 export function FileActions({
   onExportJson,
   onExportPdf,
+  onExportPptx,
   onImportFile,
   disabled,
   exportRef,
@@ -28,6 +31,11 @@ export function FileActions({
   const exportItems: ExportMenuItem[] = [
     { id: 'json', label: 'Fichier JSON (se rouvre dans l\'éditeur)', onSelect: onExportJson },
     { id: 'pdf', label: 'PDF (via l\'impression du navigateur)', onSelect: onExportPdf },
+    {
+      id: 'pptx',
+      label: 'PowerPoint (.pptx, s\'ouvre aussi dans LibreOffice)',
+      onSelect: onExportPptx,
+    },
   ]
 
   function handleChange(event: ChangeEvent<HTMLInputElement>) {
