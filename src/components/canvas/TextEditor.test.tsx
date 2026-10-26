@@ -36,6 +36,18 @@ describe('TextEditor : style du texte', () => {
     expect([style.fontWeight, style.fontStyle, style.textAlign]).toEqual(['normal', 'normal', 'left'])
   })
 
+  it('reprend la police du texte comme le rendu normal', () => {
+    const { textarea } = setup({ fontFamily: 'Georgia' })
+
+    expect(textarea.style.fontFamily).toBe('Georgia, "Times New Roman", serif')
+  })
+
+  it("sans police choisie, garde la police de l'application (inherit)", () => {
+    const { textarea } = setup({ fontFamily: null })
+
+    expect(textarea.style.fontFamily).toBe('inherit')
+  })
+
   it('applique le centrage', () => {
     const { textarea } = setup({ align: 'center' })
 

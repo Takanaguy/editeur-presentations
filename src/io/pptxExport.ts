@@ -8,6 +8,7 @@ import {
   type TextAlign,
   type TextElement,
 } from '../model/types'
+import { isBuiltInFont } from '../model/fonts'
 import { cssColorToHex } from './cssColor'
 import { loadBrowserImage, type LoadImage, type PptxImage } from './pptxImages'
 
@@ -87,6 +88,18 @@ export function sanitizeForXml(text: string): string {
     result += code >= 0xdc00 && code <= 0xdfff ? '\uFFFD' : text[index]
   }
   return result
+}
+
+// Échappe un texte destiné à une valeur d'attribut XML (entre guillemets doubles ou simples).
+// Le & passe en premier, sinon les entités produites par les autres remplacements seraient
+// elles-mêmes échappées.
+export function escapeXmlAttr(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
 }
 
 // Texte alternatif d'une image dans le fichier. Vide, PptxGenJS écrit à la place le nom de
@@ -234,13 +247,23 @@ export function buildPptxPlan(presentation: Presentation, images: LoadedImages):
       const color = resolveColor(element.color, element.opacity)
       const fill = element.fill === null ? null : resolveColor(element.fill, element.opacity)
       const fontSize = toPoints(element.fontSize)
+      // Les 8 polices courantes sont présentes sur les postes Windows et macOS : pas d'alerte.
+      // Toute autre famille doit être installée sur l'ordinateur qui ouvrira le fichier
+      // (le fichier PowerPoint ne contient que le nom de la police, pas la police elle-même).
+      if (element.fontFamily !== null && !isBuiltInFont(element.fontFamily)) {
+        warnings.add(
+          `La police « ${element.fontFamily} » doit être installée sur l'ordinateur qui ouvre le fichier PowerPoint.`,
+        )
+      }
       return {
         kind: 'text',
         ...boxOf(element),
         text: sanitizeForXml(element.text),
-        // Aujourd'hui toujours la police par défaut. Le jour où l'éditeur permettra de choisir
-        // une police, seule cette ligne aura à lire le nouveau champ de l'élément.
-        fontFace: DEFAULT_FONT_FACE,
+        // PptxGenJS écrit fontFace tel quel dans typeface="...". sanitizeForXml ne retire que les
+        // caractères de contrôle : c'est escapeXmlAttr qui empêche de sortir de l'attribut. Le nom
+        // est déjà validé (isSafeFontName), c'est une défense en profondeur au cas où cette règle
+        // serait un jour assouplie. Un nom normal (« Georgia ») n'est pas modifié.
+        fontFace: escapeXmlAttr(sanitizeForXml(element.fontFamily ?? DEFAULT_FONT_FACE)),
         fontSize,
         bold: element.bold,
         italic: element.italic,

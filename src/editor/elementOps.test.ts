@@ -13,6 +13,7 @@ import {
   updateElement,
 } from './elementOps'
 import { MIN_ELEMENT_SIZE } from './geometry'
+import { createHistoryState, historyReducer, type AppAction } from './history'
 import { deepFreeze, elementById, makeElementState, selectedElements } from './testHelpers'
 import type { EditorState, ElementChanges } from './types'
 
@@ -497,6 +498,97 @@ describe('updateElement : style du texte', () => {
     const mixed = elementById(updateElement(state, rect.id, { bold: true, fill: '#000' }), rect.id)
     expect(mixed).toEqual({ ...rect, fill: '#000' })
     expect(mixed).not.toHaveProperty('bold')
+  })
+})
+
+describe('updateElement : police', () => {
+  const fontOf = (state: EditorState, id: string) => {
+    const el = elementById(state, id)
+    return el?.type === 'text' ? el.fontFamily : undefined
+  }
+
+  it('un texte neuf a la police par défaut (null)', () => {
+    const { state, text } = makeElementState()
+    expect(fontOf(state, text.id)).toBeNull()
+  })
+
+  it.each([
+    ['un nom de la liste', 'Georgia'],
+    ['un nom de la liste avec espaces', 'Times New Roman'],
+    ['un nom sûr inconnu', 'Calibri'],
+  ])('accepte %s', (_label, fontFamily) => {
+    const { state, text } = makeElementState()
+    expect(fontOf(updateElement(state, text.id, { fontFamily }), text.id)).toBe(fontFamily)
+  })
+
+  it('null remet la police par défaut', () => {
+    const { state, text } = makeElementState()
+    const withFont = updateElement(state, text.id, { fontFamily: 'Georgia' })
+    expect(fontOf(updateElement(withFont, text.id, { fontFamily: null }), text.id)).toBeNull()
+  })
+
+  it.each([
+    ['une injection CSS', 'Arial"; background:url(x)'],
+    ['un point virgule', 'a;b'],
+    ['un antislash', 'x\\y'],
+    ['un nom trop long', 'a'.repeat(65)],
+    ['une chaîne vide', ''],
+    ['un nombre', 42],
+    ['un objet', {}],
+    ['un booléen', true],
+  ])('ignore %s', (_label, value) => {
+    const { state, text } = makeElementState()
+    const withFont = updateElement(state, text.id, { fontFamily: 'Georgia' })
+    const bad = { fontFamily: value } as unknown as ElementChanges
+    expect(updateElement(withFont, text.id, bad)).toBe(withFont)
+  })
+
+  it("applique la valeur valide et ignore l'invalide dans la même action", () => {
+    const { state, text } = makeElementState()
+    const mixed = { bold: true, fontFamily: 'a;b' } as unknown as ElementChanges
+    const result = elementById(updateElement(state, text.id, mixed), text.id)
+    expect(result).toEqual({ ...text, bold: true })
+  })
+
+  it('retourne le même état quand la police est déjà celle de l\'élément', () => {
+    const { state, text } = makeElementState()
+    expect(updateElement(state, text.id, { fontFamily: null })).toBe(state)
+    const withFont = updateElement(state, text.id, { fontFamily: 'Georgia' })
+    expect(updateElement(withFont, text.id, { fontFamily: 'Georgia' })).toBe(withFont)
+  })
+
+  it('ignore le champ sur un rectangle et une image', () => {
+    const { state, rect, image } = makeElementState()
+    expect(updateElement(state, rect.id, { fontFamily: 'Georgia' })).toBe(state)
+    expect(updateElement(state, image.id, { fontFamily: 'Georgia' })).toBe(state)
+    const mixed = elementById(
+      updateElement(state, rect.id, { fontFamily: 'Georgia', fill: '#000' }),
+      rect.id,
+    )
+    expect(mixed).toEqual({ ...rect, fill: '#000' })
+    expect(mixed).not.toHaveProperty('fontFamily')
+  })
+
+  it("chaque changement de police est une entrée d'historique, et annuler restaure", () => {
+    const { state, text } = makeElementState()
+    const history = createHistoryState(state.presentation)
+    const change = (fontFamily: string | null): AppAction => ({
+      type: 'element/update',
+      elementId: text.id,
+      changes: { fontFamily },
+    })
+
+    const after = [change('Georgia'), change('Impact'), change(null)].reduce(
+      historyReducer,
+      history,
+    )
+    expect(after.past).toHaveLength(3)
+    expect(fontOf(after.editor, text.id)).toBeNull()
+
+    const undone = historyReducer(after, { type: 'history/undo' })
+    expect(fontOf(undone.editor, text.id)).toBe('Impact')
+    const undoneAgain = historyReducer(undone, { type: 'history/undo' })
+    expect(fontOf(undoneAgain.editor, text.id)).toBe('Georgia')
   })
 })
 

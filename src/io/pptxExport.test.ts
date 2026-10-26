@@ -5,6 +5,7 @@ import {
   createSlide,
   createTextElement,
 } from '../model/factories'
+import { BUILT_IN_FONTS } from '../model/fonts'
 import type { Presentation, SlideElement } from '../model/types'
 import {
   DEFAULT_FONT_FACE,
@@ -13,6 +14,7 @@ import {
   buildPptxPlan,
   containRect,
   cssColorToHex,
+  escapeXmlAttr,
   exportToPptx,
   IMAGE_LOAD_CONCURRENCY,
   mapWithConcurrency,
@@ -156,6 +158,52 @@ describe('buildPptxPlan : texte', () => {
 
   it('la police par défaut est Arial', () => {
     expect(DEFAULT_FONT_FACE).toBe('Arial')
+  })
+
+  it('sans police choisie (null), garde Arial', () => {
+    const { item } = planOf(createTextElement({ fontFamily: null }))
+
+    expect((item as PlanText).fontFace).toBe('Arial')
+  })
+
+  it.each(BUILT_IN_FONTS.map((font) => font.name))(
+    'reprend la police courante « %s » sans avertissement',
+    (name) => {
+      const { item, plan } = planOf(createTextElement({ fontFamily: name }))
+
+      expect((item as PlanText).fontFace).toBe(name)
+      expect(plan.warnings).toEqual([])
+    },
+  )
+
+  it('une police hors liste est reprise telle quelle, avec un avertissement', () => {
+    const { item, plan } = planOf(createTextElement({ fontFamily: 'Calibri' }))
+
+    expect((item as PlanText).fontFace).toBe('Calibri')
+    expect(plan.warnings).toEqual([
+      "La police « Calibri » doit être installée sur l'ordinateur qui ouvre le fichier PowerPoint.",
+    ])
+  })
+
+  it('avertit une seule fois par police, même utilisée sur plusieurs textes et diapositives', () => {
+    const plan = buildPptxPlan(
+      presentationOf(
+        [createTextElement({ fontFamily: 'Calibri' }), createTextElement({ fontFamily: 'Calibri' })],
+        [createTextElement({ fontFamily: 'Calibri' }), createTextElement({ fontFamily: 'Open Sans' })],
+      ),
+      NO_IMAGES,
+    )
+
+    expect(plan.warnings).toEqual([
+      "La police « Calibri » doit être installée sur l'ordinateur qui ouvre le fichier PowerPoint.",
+      "La police « Open Sans » doit être installée sur l'ordinateur qui ouvre le fichier PowerPoint.",
+    ])
+  })
+
+  it('le cadre gris d\'une image manquante garde Arial', () => {
+    const { item } = planOf(createImageElement('https://exemple.fr/x.png'))
+
+    expect((item as PlanText).fontFace).toBe('Arial')
   })
 
   it('reprend gras, italique et alignement', () => {
@@ -545,6 +593,16 @@ describe('exportToPptx : colle avec dépendances injectées', () => {
     })
   })
 
+  it('transmet la police du texte à la bibliothèque', async () => {
+    const fake = createFakeLibrary()
+
+    await exportToPptx(presentationOf([createTextElement({ fontFamily: 'Georgia' })]), {
+      loadLibrary: fake.loadLibrary,
+    })
+
+    expect(fake.calls.slides[0]!.texts[0]![1]).toMatchObject({ fontFace: 'Georgia' })
+  })
+
   it('demande l\'écriture compressée en ArrayBuffer', async () => {
     const fake = createFakeLibrary()
 
@@ -772,6 +830,36 @@ const FFFD = String.fromCharCode(0xfffd)
 const FFFE = String.fromCharCode(0xfffe)
 const FFFF = String.fromCharCode(0xffff)
 const EMOJI = String.fromCodePoint(0x1f600)
+
+describe('escapeXmlAttr', () => {
+  it.each([
+    ['Georgia', 'Georgia'],
+    ['Fira Code', 'Fira Code'],
+    ['', ''],
+    ['a&b', 'a&amp;b'],
+    ['a<b>c', 'a&lt;b&gt;c'],
+    ['a"b', 'a&quot;b'],
+    ["a'b", 'a&apos;b'],
+    ['&lt;', '&amp;lt;'],
+    ['A" onload="x', 'A&quot; onload=&quot;x'],
+  ])('« %s » devient « %s »', (input, expected) => {
+    expect(escapeXmlAttr(input)).toBe(expected)
+  })
+})
+
+describe('buildPptxPlan : police hostile (hors validation)', () => {
+  it('échappe le nom de police dans le plan', () => {
+    const { item } = planOf(createTextElement({ fontFamily: 'A" onload="x' }))
+
+    expect((item as PlanText).fontFace).toBe('A&quot; onload=&quot;x')
+  })
+
+  it('laisse un nom normal intact', () => {
+    const { item } = planOf(createTextElement({ fontFamily: 'Fira Code' }))
+
+    expect((item as PlanText).fontFace).toBe('Fira Code')
+  })
+})
 
 describe('sanitizeForXml', () => {
   it('garde un texte ordinaire, accents compris', () => {

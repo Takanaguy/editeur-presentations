@@ -125,6 +125,11 @@ describe('createTextElement', () => {
     })
   })
 
+  it("utilise la police par défaut de l'application (null) et accepte une police", () => {
+    expect(createTextElement().fontFamily).toBeNull()
+    expect(createTextElement({ fontFamily: 'Georgia' }).fontFamily).toBe('Georgia')
+  })
+
   it('accepte de surcharger le style et l\'opacité', () => {
     const el = createTextElement({ bold: true, italic: true, align: 'center', opacity: 0.5 })
     expect(el).toMatchObject({ bold: true, italic: true, align: 'center', opacity: 0.5 })

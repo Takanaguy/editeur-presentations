@@ -5,6 +5,7 @@ import {
   createRectElement,
   createTextElement,
 } from '../../model/factories'
+import { BUILT_IN_FONTS } from '../../model/fonts'
 import { MAX_ALT_LENGTH } from '../../model/limits'
 import type { SlideElement } from '../../model/types'
 import { PropertiesPanel, toHexColor } from './PropertiesPanel'
@@ -395,6 +396,96 @@ describe('PropertiesPanel : style du texte', () => {
     expect(onUpdate).toHaveBeenLastCalledWith({ align: 'left' })
 
     expect(onSeal).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('PropertiesPanel : police', () => {
+  const select = () => screen.getByLabelText('Police') as HTMLSelectElement
+
+  it('propose Police par défaut puis les 8 polices courantes dans un groupe', () => {
+    setup(createTextElement())
+
+    expect(select().tagName).toBe('SELECT')
+    const options = within(select()).getAllByRole('option')
+    expect(options.map((o) => o.textContent)).toEqual([
+      'Police par défaut',
+      ...BUILT_IN_FONTS.map((font) => font.name),
+    ])
+    const group = within(select()).getByRole('group', { name: 'Polices courantes' })
+    expect(within(group).getAllByRole('option')).toHaveLength(8)
+  })
+
+  it('écrit chaque option dans sa propre police', () => {
+    setup(createTextElement())
+
+    for (const font of BUILT_IN_FONTS) {
+      const option = within(select()).getByRole('option', { name: font.name }) as HTMLOptionElement
+      expect(option.style.fontFamily).toBe(font.stack)
+      expect(option).toHaveValue(font.name)
+    }
+  })
+
+  it('sélectionne Police par défaut quand fontFamily vaut null', () => {
+    setup(createTextElement({ fontFamily: null }))
+
+    expect(select()).toHaveValue('')
+    expect(screen.getByRole('option', { name: 'Police par défaut' })).toHaveValue('')
+  })
+
+  it("sélectionne la police de l'élément", () => {
+    setup(createTextElement({ fontFamily: 'Georgia' }))
+
+    expect(select()).toHaveValue('Georgia')
+    expect(screen.queryByRole('option', { name: /non listée/ })).not.toBeInTheDocument()
+  })
+
+  it('une police hors liste ajoute une option « non listée », sélectionnée', () => {
+    setup(createTextElement({ fontFamily: 'Calibri' }))
+
+    expect(screen.getByRole('option', { name: 'Calibri (non listée)' })).toBeInTheDocument()
+    expect(select()).toHaveValue('Calibri')
+    expect(within(select()).getAllByRole('option')).toHaveLength(10)
+  })
+
+  it('un choix appelle onUpdate avec le nom puis onSeal', () => {
+    const { onUpdate, onSeal } = setup(createTextElement())
+
+    fireEvent.change(select(), { target: { value: 'Verdana' } })
+
+    expect(onUpdate).toHaveBeenCalledTimes(1)
+    expect(onUpdate).toHaveBeenCalledWith({ fontFamily: 'Verdana' })
+    expect(onSeal).toHaveBeenCalledTimes(1)
+  })
+
+  it('Police par défaut appelle onUpdate avec null, puis onSeal', () => {
+    const { onUpdate, onSeal } = setup(createTextElement({ fontFamily: 'Georgia' }))
+
+    fireEvent.change(select(), { target: { value: '' } })
+
+    expect(onUpdate).toHaveBeenCalledWith({ fontFamily: null })
+    expect(onSeal).toHaveBeenCalledTimes(1)
+  })
+
+  it('le champ Police vient avant la taille de police', () => {
+    setup(createTextElement())
+
+    const position = select().compareDocumentPosition(screen.getByLabelText('Taille de police'))
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it.each([
+    ['rectangle', createRectElement()],
+    ['image', createImageElement('data:,a')],
+  ])('est absent pour un %s', (_label, element) => {
+    setup(element)
+
+    expect(screen.queryByLabelText('Police')).not.toBeInTheDocument()
+  })
+
+  it('est absent sans sélection', () => {
+    setup(null)
+
+    expect(screen.queryByLabelText('Police')).not.toBeInTheDocument()
   })
 })
 

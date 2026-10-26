@@ -1,6 +1,7 @@
 import { useId, useState, type ReactNode } from 'react'
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from '../../editor/elementOps'
 import type { ElementChanges, ReorderTarget } from '../../editor/types'
+import { BUILT_IN_FONTS, isBuiltInFont } from '../../model/fonts'
 import { MAX_ALT_LENGTH } from '../../model/limits'
 import type {
   ElementType,
@@ -308,6 +309,46 @@ function OrderButtons({ onReorder, canReorder }: OrderButtonsProps) {
   )
 }
 
+function FontField({ element, onUpdate, onSeal }: FieldsProps<TextElement>) {
+  const id = useId()
+  const { fontFamily } = element
+  // Police ni par défaut ni dans la liste (par exemple « Calibri » venue d'un fichier importé) :
+  // on la montre pour que l'état soit visible et qu'un autre choix ne soit pas fait par erreur.
+  const unlisted = fontFamily !== null && !isBuiltInFont(fontFamily) ? fontFamily : null
+
+  function change(value: string) {
+    // Un choix est une intention complète : on coupe aussitôt la fusion de l'historique, sinon
+    // deux choix successifs (même clé de fusion) ne feraient qu'une entrée.
+    onUpdate({ fontFamily: value || null })
+    onSeal()
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className={LABEL_CLASS}>
+        Police
+      </label>
+      <select
+        id={id}
+        value={fontFamily ?? ''}
+        onChange={(event) => change(event.target.value)}
+        className={INPUT_CLASS}
+      >
+        <option value="">Police par défaut</option>
+        {unlisted !== null && <option value={unlisted}>{unlisted} (non listée)</option>}
+        <optgroup label="Polices courantes">
+          {BUILT_IN_FONTS.map((font) => (
+            // Chaque option est écrite dans sa police (ignoré par les navigateurs qui ne le gèrent pas).
+            <option key={font.name} value={font.name} style={{ fontFamily: font.stack }}>
+              {font.name}
+            </option>
+          ))}
+        </optgroup>
+      </select>
+    </div>
+  )
+}
+
 function TextFields({ element, onUpdate, onSeal }: FieldsProps<TextElement>) {
   const sizeId = useId()
   const fillToggleId = useId()
@@ -334,6 +375,7 @@ function TextFields({ element, onUpdate, onSeal }: FieldsProps<TextElement>) {
 
   return (
     <>
+      <FontField element={element} onUpdate={onUpdate} onSeal={onSeal} />
       <TextStyleButtons element={element} onUpdate={onUpdate} onSeal={onSeal} />
       <div className="flex items-center justify-between gap-2">
         <label htmlFor={sizeId} className={LABEL_CLASS}>

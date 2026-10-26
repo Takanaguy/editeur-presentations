@@ -1,5 +1,6 @@
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from '../editor/elementOps'
 import { clamp, clampBounds } from '../editor/geometry'
+import { isSafeFontName } from '../model/fonts'
 import {
   MAX_ALT_LENGTH,
   MAX_ELEMENTS_PER_SLIDE,
@@ -210,6 +211,16 @@ function createReader(source: Record<string, unknown>, path: string, errors: Err
       return '#000000'
     },
 
+    // Nom de police sûr ou null ; absent = null (police par défaut). Le nom finit dans du CSS
+    // et dans le fichier PowerPoint : tout ce qui n'est pas un nom simple est refusé.
+    fontFamily(key: string, label: string): string | null {
+      const raw = own(source, key)
+      if (raw === undefined || raw === null) return null
+      if (isSafeFontName(raw)) return raw
+      fail(label, 'doit être un nom simple (lettres, chiffres, espaces, tirets).')
+      return null
+    },
+
     // Couleur ou null ; absente = null (pas de fond).
     nullableColor(key: string, label: string): string | null {
       const raw = own(source, key)
@@ -263,6 +274,7 @@ function validateElement(
         bold: read.boolean('bold', 'le gras', false),
         italic: read.boolean('italic', "l'italique", false),
         align: read.align('align', "l'alignement"),
+        fontFamily: read.fontFamily('fontFamily', 'la police'),
       }
       return element
     }

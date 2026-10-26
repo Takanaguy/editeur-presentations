@@ -1,4 +1,5 @@
 import type { CSSProperties, MouseEventHandler, PointerEventHandler } from 'react'
+import { cssFontFamily } from '../../model/fonts'
 import type { SlideElement, TextElement } from '../../model/types'
 
 interface ElementViewProps {
@@ -16,10 +17,14 @@ export const TEXT_LINE_HEIGHT = 1.25
 
 // Style du texte partagé avec TextEditor : l'édition doit ressembler au rendu.
 export function textStyle(element: TextElement): CSSProperties {
+  const fontFamily = cssFontFamily(element.fontFamily)
   return {
     fontWeight: element.bold ? 700 : 'normal',
     fontStyle: element.italic ? 'italic' : 'normal',
     textAlign: element.align,
+    // La clé n'existe que si une police est choisie : une clé à undefined écraserait le
+    // `fontFamily: 'inherit'` posé avant ce spread par TextEditor.
+    ...(fontFamily !== undefined && { fontFamily }),
   }
 }
 

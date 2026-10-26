@@ -1,6 +1,7 @@
 import {
   MAX_ALT_LENGTH,
   MAX_ELEMENTS_PER_SLIDE,
+  MAX_FONT_NAME_LENGTH,
   MAX_SLIDES,
   MAX_TEXT_LENGTH,
   MAX_TITLE_LENGTH,
@@ -105,6 +106,7 @@ describe('aller-retour', () => {
             bold: true,
             italic: true,
             align: 'center',
+            fontFamily: 'Georgia',
           },
           { id: 'e2', type: 'rect', x: 400, y: 300, width: 200, height: 100, opacity: 1, fill: 'teal' },
         ],
@@ -546,6 +548,99 @@ describe('élément texte', () => {
     const data: Record<string, unknown> = rawText('e1')
     delete data.align
     expect(firstElement(validatePresentation(rawPresentation([data])))).toHaveProperty('align', 'left')
+  })
+
+  it.each([
+    ['une police de la liste', 'Georgia', 'Georgia'],
+    ['un nom avec espaces', 'Times New Roman', 'Times New Roman'],
+    ['un nom inconnu mais sûr', 'Calibri', 'Calibri'],
+    ['un nom de 64 caractères', 'a'.repeat(MAX_FONT_NAME_LENGTH), 'a'.repeat(MAX_FONT_NAME_LENGTH)],
+    ['null', null, null],
+  ])('fontFamily : accepte %s', (_label, value, expected) => {
+    expect(textOf({ fontFamily: value }).fontFamily).toBe(expected)
+  })
+
+  it('fontFamily vaut null quand il est absent', () => {
+    const data: Record<string, unknown> = rawText('e1')
+    delete data.fontFamily
+    expect(firstElement(validatePresentation(rawPresentation([data])))).toHaveProperty('fontFamily', null)
+  })
+
+  it.each([
+    ['une injection CSS', 'Arial"; background:url(x)'],
+    ['un point virgule', 'a;b'],
+    ['un antislash', 'x\\y'],
+    ['un chevron', 'a<b'],
+    ['un nom trop long', 'a'.repeat(MAX_FONT_NAME_LENGTH + 1)],
+    ['une chaîne vide', ''],
+    ['un nombre', 42],
+    ['un booléen', true],
+    ['un objet', { name: 'Arial' }],
+    ['un tableau', ['Arial']],
+  ])('fontFamily : refuse %s avec un message clair', (_label, value) => {
+    const data = rawPresentation([rawText('e0'), rawText('e1', { fontFamily: value })])
+    // Deuxième élément de la première diapositive : le chemin est donc « élément 2 ».
+    expect(errorsOf(validatePresentation(data))).toEqual([
+      'Diapositive 1, élément 2 : la police doit être un nom simple (lettres, chiffres, espaces, tirets).',
+    ])
+  })
+
+  it('le message d\'une police refusée cite la diapositive et l\'élément', () => {
+    const data = {
+      version: 1,
+      title: 'T',
+      slides: [
+        { id: 's1', elements: [] },
+        { id: 's2', elements: [rawText('e1', { fontFamily: 'a;b' })] },
+      ],
+    }
+    expect(errorsOf(validatePresentation(data))).toEqual([
+      'Diapositive 2, élément 1 : la police doit être un nom simple (lettres, chiffres, espaces, tirets).',
+    ])
+  })
+
+  it('ignore fontFamily sur un rectangle et une image, comme les autres champs de texte', () => {
+    const data = rawPresentation([
+      rawRect('e1', { fontFamily: 'a;b' }),
+      rawImage('e2', { fontFamily: 42 }),
+    ])
+    const elements = expectOk(validatePresentation(data)).slides[0]?.elements ?? []
+    expect(elements).toHaveLength(2)
+    for (const element of elements) expect(element).not.toHaveProperty('fontFamily')
+  })
+
+  it('l\'export contient fontFamily (nom ou null) et se relit à l\'identique', () => {
+    const fonts: (string | null)[] = ['Georgia', null, 'Calibri']
+    const presentation: Presentation = {
+      version: 1,
+      title: 'Polices',
+      slides: [
+        {
+          id: 's1',
+          elements: fonts.map((fontFamily, index) => ({
+            id: `e${index}`,
+            type: 'text' as const,
+            x: 0,
+            y: 0,
+            width: 100,
+            height: 50,
+            opacity: 1,
+            text: 'T',
+            fontSize: 20,
+            color: '#000000',
+            fill: null,
+            bold: false,
+            italic: false,
+            align: 'left' as const,
+            fontFamily,
+          })),
+        },
+      ],
+    }
+    const text = serializePresentation(presentation)
+    expect(text).toContain('"fontFamily": "Georgia"')
+    expect(text).toContain('"fontFamily": null')
+    expect(expectOk(parsePresentation(text))).toStrictEqual(presentation)
   })
 
   it('fill vaut null quand il est null ou absent', () => {
@@ -1026,6 +1121,7 @@ describe('prepareExport', () => {
               bold: false,
               italic: false,
               align: 'left',
+              fontFamily: null,
             },
           ],
         },

@@ -54,6 +54,7 @@ export function createTextElement(
     bold: false,
     italic: false,
     align: 'left',
+    fontFamily: null,
     opacity: 1,
     ...overrides,
     id: createId(),

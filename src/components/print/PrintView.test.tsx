@@ -67,6 +67,17 @@ describe('PrintView', () => {
     expect(page.innerHTML).toContain('scale(1)')
   })
 
+  it("rend la police choisie d'un texte (l'impression utilise le style)", () => {
+    const slide: Slide = {
+      ...createSlide(),
+      elements: [createTextElement({ text: 'Titre', fontFamily: 'Impact' })],
+    }
+
+    render(<PrintView slides={[slide]} />)
+
+    expect(within(pages()[0]!).getByText('Titre').style.fontFamily).toBe('Impact, "Arial Black", sans-serif')
+  })
+
   it('est masqué aux lecteurs d\'écran et visible seulement à l\'impression', () => {
     render(<PrintView slides={[createSlide()]} />)
 

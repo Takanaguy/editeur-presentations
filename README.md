@@ -31,7 +31,7 @@ Ce projet fait partie du dépôt du portfolio de Tanguy Horard, dans le sous-dos
 - Déplacer l'élément sélectionné aux flèches du clavier (1 unité, 10 avec Maj).
 
 **Panneau de propriétés**
-- Texte : gras, italique, alignement (gauche, centre, droite), taille de police, couleur du texte, fond optionnel et sa couleur.
+- Texte : police (8 polices courantes, ou une police installée sur l'ordinateur si le fichier en nomme une autre), gras, italique, alignement (gauche, centre, droite), taille de police, couleur du texte, fond optionnel et sa couleur.
 - Rectangle : couleur de remplissage.
 - Image : texte alternatif.
 - Tous les éléments : opacité, ordre d'empilement (premier plan, avancer, reculer, arrière-plan).
@@ -105,10 +105,10 @@ Depuis `slide-editor/` :
 
 | Commande | Rôle | Résultat constaté à la rédaction |
 | --- | --- | --- |
-| `npm test` | Lance tous les tests une fois (`vitest run`) | 56 fichiers, 1608 tests, tous passent |
+| `npm test` | Lance tous les tests une fois (`vitest run`) | 58 fichiers, 1770 tests, tous passent |
 | `npm run test:watch` | Relance les tests à chaque modification | (mode interactif, non lancé pour ce relevé) |
 | `npm run lint` | ESLint sur tout le projet | aucune erreur ni avertissement |
-| `npm run build` | Vérification des types (`tsc -b`) puis build de production dans `dist/` | réussi, 68 modules. JavaScript principal d'environ 284 ko (88 ko en gzip), plus deux fichiers chargés seulement au premier export PowerPoint : le code d'export (environ 10 ko) et PptxGenJS (environ 368 ko, 123 ko en gzip) |
+| `npm run build` | Vérification des types (`tsc -b`) puis build de production dans `dist/` | réussi, 69 modules. JavaScript principal d'environ 286 ko (88 ko en gzip), plus deux fichiers chargés seulement au premier export PowerPoint : le code d'export (environ 10 ko) et PptxGenJS (environ 368 ko, 123 ko en gzip) |
 | `npm run preview` | Sert le contenu de `dist/` pour le vérifier avant déploiement | (serveur, non lancé pour ce relevé ; la commande est présente dans `package.json`) |
 
 `npm run dev` et `npm run preview` sont des serveurs : leur présence a été vérifiée dans `package.json`, pas leur exécution.
@@ -124,7 +124,7 @@ slide-editor/
 │   ├── DECISIONS.md        choix techniques et difficultés
 │   └── screenshots/        captures à ajouter
 └── src/
-    ├── model/              données pures : types, fabriques, ids, type guards, limites
+    ├── model/              données pures : types, fabriques, ids, type guards, limites, polices (fonts.ts)
     ├── editor/             logique d'édition pure : reducer, historique, géométrie
     │   ├── reducer.ts          aiguillage des actions (switch exhaustif)
     │   ├── slideOps.ts         opérations sur les diapositives
@@ -194,7 +194,8 @@ L'export produit un fichier JSON indenté, de cette forme (exemple raccourci) :
           "fill": null,
           "bold": true,
           "italic": false,
-          "align": "center"
+          "align": "center",
+          "fontFamily": "Georgia"
         }
       ]
     }
@@ -209,7 +210,8 @@ L'export produit un fichier JSON indenté, de cette forme (exemple raccourci) :
 - **`slides`** : au moins 1 diapositive, 200 au maximum. Chacune a un `id` et une liste `elements`.
 - **L'ordre de `elements` est l'ordre d'empilement** : le dernier élément est au premier plan. Il n'y a pas de champ `z-index`.
 - **Champs communs** à tous les éléments : `id`, `type` (`"text"`, `"rect"` ou `"image"`), `x`, `y`, `width`, `height` (espace logique 1280 x 720) et `opacity` (de 0 à 1, facultatif, 1 par défaut).
-- **Texte** : `text` (10 000 caractères au maximum), `fontSize` (de 8 à 400) et `color` sont obligatoires ; `fill` (couleur ou `null`), `bold`, `italic` et `align` (`"left"`, `"center"`, `"right"`) sont facultatifs, avec pour défauts `null`, `false`, `false` et `"left"`.
+- **Texte** : `text` (10 000 caractères au maximum), `fontSize` (de 8 à 400) et `color` sont obligatoires ; `fill` (couleur ou `null`), `bold`, `italic`, `align` (`"left"`, `"center"`, `"right"`) et `fontFamily` sont facultatifs, avec pour défauts `null`, `false`, `false`, `"left"` et `null`.
+- **`fontFamily`** (texte seulement) : un NOM de famille de police (`"Georgia"`, `"Calibri"`), jamais une valeur CSS. `null` (ou absent) veut dire la police par défaut de l'application. Le nom est limité à 64 caractères : lettres sans accent, chiffres, espaces, tirets bas et tirets, en commençant et en finissant par une lettre ou un chiffre, sans deux espaces de suite (« Fira Code » passe, « Gill Sans (MT) » et « Arial » suivi d'un espace sont refusés). La comparaison avec la liste des polices courantes tient compte de la casse. Tout autre contenu est refusé à l'import (voir `docs/DECISIONS.md`, décision 12).
 - **Rectangle** : `fill` (couleur, obligatoire).
 - **Image** : `src` (obligatoire : adresse http, https ou data URL `data:image/`), `alt` (facultatif, 500 caractères au maximum, vide par défaut).
 - **Couleurs** : hexadécimal (3, 4, 6 ou 8 chiffres), un mot de 1 à 30 lettres (par exemple `red`, sans vérification de la liste des couleurs CSS), ou `rgb()`, `rgba()`, `hsl()`, `hsla()`.
@@ -222,6 +224,7 @@ L'export produit un fichier JSON indenté, de cette forme (exemple raccourci) :
 | Diapositives par présentation | 200 |
 | Éléments par diapositive | 500 |
 | Caractères par texte | 10 000 |
+| Caractères par nom de police | 64 |
 | Poids cumulé des images de la présentation (appliqué à l'ajout ou à la copie d'un élément image) | 15 Mo de caractères de `src` |
 | Image ajoutée depuis un fichier local | 2 Mo |
 | Une image par fichier JSON importé | 4 Mo de caractères de `src` |
@@ -256,9 +259,10 @@ Ces points ne sont pas dans le projet, par choix de périmètre (l'export PDF en
 
 - Ctrl+P (impression native du navigateur) n'imprime rien : utiliser Exporter puis PDF.
 - **Le rendu d'impression du PDF n'a pas pu être vérifié de façon automatique** : jsdom n'imprime pas. Les tests couvrent le déclenchement, pas la pagination ni les couleurs. À essayer à la main dans un navigateur.
-- **Export PowerPoint : le rendu n'est pas garanti identique à l'écran.** Les polices doivent être installées sur l'ordinateur qui ouvre le fichier (le texte est en Arial, présente partout, mais l'éditeur affiche une police système différente). Les coupures de lignes et l'interligne peuvent différer légèrement : l'interligne est fixé à 1,25 fois la taille de police, comme à l'écran, mais chaque logiciel place la première ligne à sa façon. Un texte plus long que sa boîte déborde au lieu d'être coupé. L'opacité d'un texte devient la transparence du texte PowerPoint ; une ancienne version de LibreOffice peut l'ignorer (non vérifié).
+- **Export PowerPoint : le rendu n'est pas garanti identique à l'écran.** Le texte reprend la police choisie (Arial si aucune), mais le fichier ne contient que son nom : la police doit être installée sur l'ordinateur qui ouvre le fichier PowerPoint. Les 8 polices courantes y sont presque toujours, une autre police (par exemple « Calibri » venue d'un fichier importé) est signalée par un avertissement à la fin de l'export. Les coupures de lignes et l'interligne peuvent différer légèrement : l'interligne est fixé à 1,25 fois la taille de police, comme à l'écran, mais chaque logiciel place la première ligne à sa façon. Un texte plus long que sa boîte déborde au lieu d'être coupé. L'opacité d'un texte devient la transparence du texte PowerPoint ; une ancienne version de LibreOffice peut l'ignorer (non vérifié).
 - **Pas d'export .odp natif.** Pour obtenir un fichier OpenDocument, ouvrir le .pptx dans LibreOffice Impress puis « Enregistrer sous » au format .odp.
 - **Le fichier .pptx produit n'est pas vérifié automatiquement dans PowerPoint ou LibreOffice** : les tests contrôlent le contenu de l'archive (diapositives, positions, couleurs, transparence), pas son affichage. À ouvrir à la main dans les logiciels visés.
+- **Les polices listées sont des polices système : leur rendu dépend de l'ordinateur** (Arial, Georgia... sont présentes sur Windows et macOS, pas toujours sous Linux). Dans le PowerPoint, la police doit être installée sur l'ordinateur qui ouvre le fichier. Le choix de la police ne propose que ces 8 polices ; ajouter une police depuis un fichier n'est pas encore possible.
 - **Rien n'est conservé si on recharge la page** : l'état vit en mémoire. Il faut exporter en JSON pour garder son travail.
 - **Pas d'adaptation au mobile ni aux petits écrans** : la mise en page à trois colonnes a des largeurs fixes pour les panneaux latéraux, et l'éditeur n'est pas responsive. Le glisser des vignettes est désactivé au toucher (les boutons Monter / Descendre servent d'alternative).
 - **Le clavier ne couvre pas tout** : les flèches déplacent l'élément sélectionné, mais le redimensionnement ne se fait qu'à la souris (les poignées ne sont pas atteignables au clavier). Les lecteurs d'écran ne reçoivent pas d'annonce après un annuler / rétablir.

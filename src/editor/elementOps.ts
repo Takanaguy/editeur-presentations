@@ -1,4 +1,5 @@
 import { createId } from '../model/ids'
+import { isSafeFontName } from '../model/fonts'
 import { MAX_ALT_LENGTH, MAX_TEXT_LENGTH } from '../model/limits'
 import type { Slide, SlideElement, TextAlign } from '../model/types'
 import { addBlockReason } from './addLimits'
@@ -57,6 +58,9 @@ const isTextAlign = (value: unknown): value is TextAlign =>
   value === 'left' || value === 'center' || value === 'right'
 const isStringOrNull = (value: unknown): value is string | null =>
   value === null || typeof value === 'string'
+// null (police par défaut) ou un nom de famille sûr : rien d'autre ne peut finir dans du CSS.
+const isFontFamily = (value: unknown): value is string | null =>
+  value === null || isSafeFontName(value)
 
 function areFinite(...values: number[]): boolean {
   return values.every(Number.isFinite)
@@ -255,6 +259,7 @@ export function updateElement(
           bold: pick('bold', element.bold, isBoolean),
           italic: pick('italic', element.italic, isBoolean),
           align: pick('align', element.align, isTextAlign),
+          fontFamily: pick('fontFamily', element.fontFamily, isFontFamily),
           opacity: pickOpacity(element.opacity),
         }
         break

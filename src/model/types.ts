@@ -25,6 +25,9 @@ export interface TextElement extends BaseElement {
   bold: boolean
   italic: boolean
   align: TextAlign
+  // Nom de famille de la police (« Georgia »), jamais une valeur CSS. null = police par défaut
+  // de l'application.
+  fontFamily: string | null
 }
 
 export interface RectElement extends BaseElement {

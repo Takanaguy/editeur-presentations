@@ -122,6 +122,57 @@ describe('exportToPptx avec la vraie bibliothèque', () => {
     expect(xml).toContain('wrap="square"')
   })
 
+  it('écrit la police choisie (Georgia) dans la diapositive, sans avertissement', async () => {
+    const { text, warnings } = await exportAndOpen(
+      presentationOf('Police', [createTextElement({ fontFamily: 'Georgia' })]),
+    )
+
+    const xml = await text('ppt/slides/slide1.xml')
+    expect(xml).toContain('typeface="Georgia"')
+    expect(xml).not.toContain('typeface="Arial"')
+    expect(warnings).toEqual([])
+  })
+
+  it.each(['Georgia', 'Fira Code'])(
+    'un nom normal (%s) est écrit tel quel, sans double échappement',
+    async (name) => {
+      const { text } = await exportAndOpen(
+        presentationOf('Police', [createTextElement({ fontFamily: name })]),
+      )
+
+      const xml = await text('ppt/slides/slide1.xml')
+      expect(xml).toContain(`typeface="${name}"`)
+      expect(xml).not.toContain('&amp;')
+    },
+  )
+
+  it('un nom hostile passé hors validation reste dans son attribut : XML bien formé, aucun onload', async () => {
+    const { text } = await exportAndOpen(
+      presentationOf('Police', [createTextElement({ fontFamily: 'A" onload="x' })]),
+    )
+
+    const xml = await text('ppt/slides/slide1.xml')
+    const document = parseXml(xml)
+    expect(hasParserError(document)).toBe(false)
+    // Aucun attribut onload nulle part dans le document (le texte reste dans la valeur de typeface).
+    const attributeNames = Array.from(document.getElementsByTagName('*')).flatMap((node) =>
+      Array.from(node.attributes).map((attribute) => attribute.name),
+    )
+    expect(attributeNames).not.toContain('onload')
+    expect(xml).toContain('typeface="A&quot; onload=&quot;x"')
+  })
+
+  it('une police hors liste (Calibri) est écrite et signalée par un avertissement', async () => {
+    const { text, warnings } = await exportAndOpen(
+      presentationOf('Police', [createTextElement({ fontFamily: 'Calibri' })]),
+    )
+
+    expect(await text('ppt/slides/slide1.xml')).toContain('typeface="Calibri"')
+    expect(warnings).toEqual([
+      "La police « Calibri » doit être installée sur l'ordinateur qui ouvre le fichier PowerPoint.",
+    ])
+  })
+
   it('un texte sur plusieurs lignes donne un paragraphe par ligne, lignes vides comprises', async () => {
     const { text } = await exportAndOpen(
       presentationOf('Lignes', [createTextElement({ text: 'un\ndeux\n\nquatre' })]),

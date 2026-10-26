@@ -119,6 +119,37 @@ describe('ElementView', () => {
     expect(screen.getByText('Droite')).toHaveStyle({ textAlign: 'right' })
   })
 
+  it('applique la pile CSS de la police choisie', () => {
+    render(<ElementView element={createTextElement({ text: 'Serif', fontFamily: 'Georgia' })} />)
+
+    expect(screen.getByText('Serif').style.fontFamily).toBe('Georgia, "Times New Roman", serif')
+  })
+
+  it('une police inconnue mais sûre est entre guillemets avec un repli', () => {
+    render(<ElementView element={createTextElement({ text: 'Calibri', fontFamily: 'Calibri' })} />)
+
+    expect(screen.getByText('Calibri').style.fontFamily).toBe('"Calibri", sans-serif')
+  })
+
+  it("sans police choisie (null), n'ajoute aucune police : celle de l'application est héritée", () => {
+    render(<ElementView element={createTextElement({ text: 'Défaut', fontFamily: null })} />)
+
+    expect(screen.getByText('Défaut').style.fontFamily).toBe('')
+  })
+
+  it("n'applique jamais un nom de police dangereux", () => {
+    // Valeur dangereuse posée directement (cast de test) : elle ne passe par aucune validation.
+    const element = createTextElement({ text: 'Piège' })
+    const hostile = { ...element, fontFamily: 'Arial"; background:url(x)' }
+    render(<ElementView element={hostile} />)
+
+    const node = screen.getByText('Piège')
+    // Aucune police posée : le texte garde celle de l'application. Et rien d'autre n'a été injecté.
+    expect(node.style.fontFamily).toBe('')
+    expect(node.getAttribute('style')).not.toContain('url(')
+    expect(node.getAttribute('style')).not.toContain('Arial')
+  })
+
   it('rend une image avec src, alt, object-fit contain et sans glisser', () => {
     const element = createImageElement('data:image/png;base64,AAAA', { alt: 'Un logo' })
     render(<ElementView element={element} />)

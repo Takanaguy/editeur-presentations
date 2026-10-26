@@ -6,6 +6,8 @@ export const MAX_ELEMENTS_PER_SLIDE = 500
 export const MAX_TEXT_LENGTH = 10000
 export const MAX_ALT_LENGTH = 500
 export const MAX_TITLE_LENGTH = 200
+// Un nom de famille de police finit dans une valeur CSS et dans le fichier PowerPoint : on le borne.
+export const MAX_FONT_NAME_LENGTH = 64
 // Caractères cumulés des `src` d'images de TOUTE la présentation. Le fichier exporté est
 // limité à 25 Mo : on garde 10 Mo de marge pour le reste du JSON (textes, géométrie, ids).
 export const MAX_TOTAL_IMAGE_SRC_LENGTH = 15 * 1024 * 1024
