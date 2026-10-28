@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-// Vitest se lance depuis la racine de slide-editor. (Sous jsdom, import.meta.url n'est pas
+// Vitest se lance depuis la racine du projet. (Sous jsdom, import.meta.url n'est pas
 // une adresse de fichier.)
 const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf-8')
 

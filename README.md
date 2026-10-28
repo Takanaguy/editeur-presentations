@@ -2,7 +2,7 @@
 
 Éditeur de présentations dans le navigateur, dans l'esprit de PowerPoint : on compose des diapositives avec du texte, des rectangles et des images, on les réorganise, on les présente en plein écran, et on les enregistre dans un fichier JSON ou on les exporte en PDF ou en PowerPoint. Tout tourne côté client, sans serveur ni compte.
 
-Ce projet fait partie du dépôt du portfolio de Tanguy Horard, dans le sous-dossier `slide-editor/`. Il est indépendant du portfolio (son propre `package.json`).
+Projet personnel de Tanguy Horard, présenté dans son [portfolio](https://portfolio-tanguy-theta.vercel.app/projets/editeur-presentations).
 
 Réalisé avec l'assistance de Claude Code (agents de développement et de relecture) : voir la section « Méthode de travail » de [docs/DECISIONS.md](docs/DECISIONS.md).
 
@@ -107,7 +107,8 @@ Aux bornes, la navigation s'arrête (pas de retour au début). Les combinaisons 
 Prérequis : Node 22.22.2 ou plus récent, hors Node 23, hors Node 25 et hors Node 24 avant 24.15 (contrainte de jsdom 30, utilisé par les tests). Le projet est développé avec Node 24.18. Vite 8 et ESLint 10 accepteraient Node 20.19, mais pas les tests.
 
 ```bash
-cd slide-editor
+git clone https://github.com/Takanaguy/editeur-presentations.git
+cd editeur-presentations
 npm install
 npm run dev
 ```
@@ -116,7 +117,7 @@ Vite sert l'application sur http://localhost:5173 (port par défaut, il en prend
 
 ## Tests, lint, build
 
-Depuis `slide-editor/` :
+Depuis la racine du projet :
 
 | Commande | Rôle | Résultat constaté à la rédaction |
 | --- | --- | --- |
@@ -157,7 +158,7 @@ Aucune bibliothèque pour le glisser-déposer, l'état ou la validation : tout e
 ## Architecture
 
 ```
-slide-editor/
+editeur-presentations/
 ├── index.html, vite.config.ts (Vite, Tailwind, Vitest avec jsdom), eslint.config.js
 ├── docs/                   DECISIONS.md (choix techniques et difficultés), screenshots/ (captures du README)
 └── src/
@@ -272,16 +273,12 @@ La géométrie hors limites (par exemple un élément qui dépasse de la diaposi
 
 ## Déploiement sur Vercel
 
-Le projet est dans le sous-dossier `slide-editor` d'un dépôt qui contient aussi le portfolio (prévu pour Vercel à la racine). Il faut donc créer un projet Vercel distinct qui pointe sur ce sous-dossier.
+Le projet est à la racine de son dépôt `editeur-presentations`.
 
-1. Pousser le dépôt sur GitHub.
-2. Sur vercel.com, cliquer sur « Add New » puis « Project », et importer le dépôt.
-3. **Important : régler « Root Directory » sur `slide-editor`.** Sans cela, Vercel construirait le portfolio de la racine.
-4. Vercel détecte le preset « Vite ». Vérifier : commande de build `npm run build`, dossier de sortie `dist`, commande d'installation par défaut. Version de Node : 22 ou plus (le projet est développé avec Node 24). Aucune variable d'environnement n'est nécessaire.
-5. Cliquer sur « Deploy ». Ensuite, chaque push sur la branche principale redéploie.
-6. Alternative en ligne de commande : `cd slide-editor`, puis `npx vercel` (une connexion est demandée), puis `npx vercel --prod` pour la production.
-
-Le fichier `vercel.json` à la racine du dépôt concerne le portfolio. Il n'est pas utilisé quand le Root Directory est `slide-editor` (l'éditeur n'en a pas besoin : c'est une application d'une seule page, sans routage).
+1. Sur vercel.com, cliquer sur « Add New » puis « Project », et importer le dépôt `editeur-presentations`.
+2. Vercel détecte le preset « Vite ». Vérifier : commande de build `npm run build`, dossier de sortie `dist`, commande d'installation par défaut. Version de Node : 22 ou plus (le projet est développé avec Node 24). Aucune variable d'environnement n'est nécessaire.
+3. Cliquer sur « Deploy ». Ensuite, chaque push sur la branche principale redéploie.
+4. Alternative en ligne de commande, à la racine du projet : `npx vercel` (une connexion est demandée), puis `npx vercel --prod` pour la production.
 
 **URL de la démo : à renseigner après le déploiement.** Le déploiement n'a pas encore été fait.
 
@@ -292,3 +289,5 @@ Pas dans le projet, par choix de périmètre : animations et transitions, thème
 ## Pour aller plus loin
 
 Les choix techniques et les difficultés rencontrées sont expliqués dans [docs/DECISIONS.md](docs/DECISIONS.md).
+
+Historique : les premiers commits portent le préfixe `slide-editor`, parce que le projet vivait d'abord dans le dépôt de son portfolio avant d'avoir son propre dépôt.
