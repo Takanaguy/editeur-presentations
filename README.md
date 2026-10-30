@@ -280,7 +280,7 @@ Le projet est à la racine de son dépôt `editeur-presentations`.
 3. Cliquer sur « Deploy ». Ensuite, chaque push sur la branche principale redéploie.
 4. Alternative en ligne de commande, à la racine du projet : `npx vercel` (une connexion est demandée), puis `npx vercel --prod` pour la production.
 
-**URL de la démo : à renseigner après le déploiement.** Le déploiement n'a pas encore été fait.
+**Démo en ligne : <https://editeur-presentations.vercel.app>**
 
 ## Hors périmètre volontaire
 
